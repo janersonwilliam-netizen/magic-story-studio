@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export function SignUpForm() {
     const [email, setEmail] = useState('');
@@ -11,6 +12,7 @@ export function SignUpForm() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const { signUp } = useAuth();
+    const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -38,6 +40,8 @@ export function SignUpForm() {
         } else {
             setSuccess(true);
             setLoading(false);
+            // Redirect to login after 2 seconds
+            setTimeout(() => navigate('/login'), 2000);
         }
     };
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, Clock, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,7 +18,9 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
         title: '',
         age_group: '6-8',
         tone: 'aventura',
-        duration: 5,
+        duration: 3, // Duração da história em minutos (texto)
+        scene_duration: 15, // Duração de cada cena em segundos (vídeo)
+        custom_instructions: '',
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -37,6 +39,9 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
             }
 
             // Criar história no banco
+            // Armazenamos scene_duration dentro de custom_instructions para evitar migração de banco
+            const instructionsWithMeta = `${formData.custom_instructions.trim()}\n[SCENE_DURATION: ${formData.scene_duration}]`.trim();
+
             const { data, error: insertError } = await supabase
                 .from('stories')
                 .insert({
@@ -44,8 +49,10 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                     title: formData.title.trim(),
                     age_group: formData.age_group,
                     tone: formData.tone,
-                    duration: formData.duration,
+                    duration: formData.duration, // Minutos (Texto)
+                    // scene_duration removido pois não existe no banco
                     visual_style: '3D Pixar/DreamWorks',
+                    custom_instructions: instructionsWithMeta || null,
                     status: 'draft',
                 })
                 .select()
@@ -63,7 +70,7 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 p-4">
+        <div className="w-full">
             <div className="max-w-2xl mx-auto py-8">
                 {/* Header */}
                 <div className="mb-8">
@@ -104,7 +111,7 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                                 type="text"
                                 value={formData.title}
                                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-600"
+                                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
                                 placeholder="Ex: A Aventura do Coelhinho Curioso"
                                 required
                                 disabled={loading}
@@ -124,7 +131,7 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                                 id="age_group"
                                 value={formData.age_group}
                                 onChange={(e) => setFormData({ ...formData, age_group: e.target.value })}
-                                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-600"
+                                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
                                 required
                                 disabled={loading}
                             >
@@ -149,8 +156,8 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                                         onClick={() => setFormData({ ...formData, tone: option.value })}
                                         disabled={loading}
                                         className={`p-4 border-2 rounded-lg text-left transition-all ${formData.tone === option.value
-                                                ? 'border-purple-600 bg-purple-50'
-                                                : 'border-gray-200 hover:border-purple-300'
+                                            ? 'border-[#FF0000] bg-red-50'
+                                            : 'border-gray-200 hover:border-red-300'
                                             }`}
                                     >
                                         <div className="font-medium">{option.label}</div>
@@ -160,27 +167,75 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                             </div>
                         </div>
 
-                        {/* Duração */}
-                        <div className="space-y-2">
-                            <label htmlFor="duration" className="text-sm font-medium">
-                                Duração Estimada: {formData.duration} minutos
-                            </label>
-                            <input
-                                id="duration"
-                                type="range"
-                                min="3"
-                                max="10"
-                                value={formData.duration}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, duration: parseInt(e.target.value) })
-                                }
-                                className="w-full"
-                                disabled={loading}
-                            />
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>3 min</span>
-                                <span>10 min</span>
+                        {/* Duração da História (Total) */}
+                        <div className="space-y-4 pt-2">
+                            <div className="flex items-center justify-between">
+                                <label htmlFor="duration" className="text-sm font-medium flex items-center gap-2">
+                                    <BookOpen className="h-4 w-4 text-[#FF0000]" />
+                                    Tamanho da História (Texto)
+                                </label>
+                                <span className="text-sm font-bold text-[#FF0000] bg-red-50 px-3 py-1 rounded-full border border-red-100">
+                                    ~{formData.duration} minutos de leitura
+                                </span>
                             </div>
+
+                            <div className="relative">
+                                <input
+                                    id="duration"
+                                    type="range"
+                                    min="3"
+                                    max="10"
+                                    step="1"
+                                    value={formData.duration}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, duration: parseInt(e.target.value) })
+                                    }
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#FF0000]"
+                                    disabled={loading}
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                                    <span>Curta (3min)</span>
+                                    <span>Média (5min)</span>
+                                    <span>Longa (10min)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Duração por Cena */}
+                        <div className="space-y-4 pt-4 border-t border-dashed">
+                            <div className="flex items-center justify-between">
+                                <label htmlFor="scene_duration" className="text-sm font-medium flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-[#FF0000]" />
+                                    Duração por Cena (Vídeo)
+                                </label>
+                                <span className="text-sm font-bold text-[#FF0000] bg-red-50 px-3 py-1 rounded-full border border-red-100">
+                                    {formData.scene_duration} segundos
+                                </span>
+                            </div>
+
+                            <div className="relative">
+                                <input
+                                    id="scene_duration"
+                                    type="range"
+                                    min="10"
+                                    max="30"
+                                    step="1"
+                                    value={formData.scene_duration}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, scene_duration: parseInt(e.target.value) })
+                                    }
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#FF0000]"
+                                    disabled={loading}
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                                    <span>10s (Rápido)</span>
+                                    <span>20s (Normal)</span>
+                                    <span>30s (Detalhado)</span>
+                                </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Define quanto tempo cada cena terá no vídeo final.
+                            </p>
                         </div>
 
                         {/* Estilo Visual (Read-only) */}
@@ -191,6 +246,25 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 Mais estilos em breve!
+                            </p>
+                        </div>
+
+                        {/* Observações / Instruções Personalizadas */}
+                        <div className="space-y-2">
+                            <label htmlFor="custom_instructions" className="text-sm font-medium">
+                                Observações / Ideias para a História (Opcional)
+                            </label>
+                            <textarea
+                                id="custom_instructions"
+                                value={formData.custom_instructions}
+                                onChange={(e) => setFormData({ ...formData, custom_instructions: e.target.value })}
+                                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000] min-h-[120px] resize-y"
+                                placeholder="Ex: Quero que a história tenha um dragão amigável, que ensine sobre amizade e coragem. O final deve ser feliz e emocionante."
+                                disabled={loading}
+                                maxLength={500}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                {formData.custom_instructions.length}/500 caracteres • Dê ideias sobre personagens, temas, lições ou como quer que a história seja
                             </p>
                         </div>
 
@@ -207,7 +281,7 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                                className="flex-1 px-6 py-3 bg-[#FF0000] text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                             >
                                 {loading ? (
                                     <>

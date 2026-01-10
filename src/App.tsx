@@ -1,32 +1,39 @@
 import React from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { AuthPage } from './components/auth/AuthPage';
-import { StoryDashboard } from './components/StoryDashboard';
-import { Loader2 } from 'lucide-react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { LoginPage } from './components/auth/LoginPage';
+import { SignUpPage } from './components/auth/SignUpPage';
+import { Dashboard } from './components/Dashboard';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { StudioIndex } from './components/Studio';
 
-function AppContent() {
-    const { user, loading } = useAuth();
-
-    if (loading) {
-        return (
-            <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50">
-                <div className="text-center">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-                    <p className="text-muted-foreground">Carregando...</p>
-                </div>
-            </div>
-        );
-    }
-
-    return user ? <StoryDashboard /> : <AuthPage />;
-}
-
-const App: React.FC = () => {
+export default function App() {
     return (
         <AuthProvider>
-            <AppContent />
+            <Router>
+                <Routes>
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/signup" element={<SignUpPage />} />
+                    <Route
+                        path="/dashboard"
+                        element={
+                            <ProtectedRoute>
+                                <Dashboard />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/studio"
+                        element={
+                            <ProtectedRoute>
+                                <StudioIndex />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route path="/" element={<Navigate to="/login" replace />} />
+                </Routes>
+            </Router>
         </AuthProvider>
     );
-};
+}
 
-export default App;

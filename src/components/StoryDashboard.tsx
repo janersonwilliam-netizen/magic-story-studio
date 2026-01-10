@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { LogOut, Plus, Loader2, BookOpen, Calendar, AlertCircle } from 'lucide-react';
+import { LogOut, Plus, Loader2, BookOpen, Calendar, AlertCircle, Trash2, Play, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { CreateStoryForm } from './CreateStoryForm';
@@ -22,6 +22,13 @@ export function StoryDashboard() {
     const [error, setError] = useState('');
     const [view, setView] = useState<'dashboard' | 'create' | 'view'>('dashboard');
     const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
+
+    // Delete modal state
+    const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; storyId: string; storyTitle: string }>({
+        isOpen: false,
+        storyId: '',
+        storyTitle: ''
+    });
 
     useEffect(() => {
         fetchStories();
@@ -55,9 +62,7 @@ export function StoryDashboard() {
     };
 
     const handleStoryCreated = async (storyId: string) => {
-        // Refresh stories list
         await fetchStories();
-        // Open the newly created story
         setSelectedStoryId(storyId);
         setView('view');
     };
@@ -67,182 +72,185 @@ export function StoryDashboard() {
         setView('view');
     };
 
+    const handleDeleteClick = (e: React.MouseEvent, storyId: string, storyTitle: string) => {
+        e.stopPropagation();
+        setDeleteModal({ isOpen: true, storyId, storyTitle });
+    };
+
+    const handleConfirmDelete = async () => {
+        try {
+            const { error } = await supabase.from('stories').delete().eq('id', deleteModal.storyId);
+            if (error) throw error;
+            setStories(stories.filter(s => s.id !== deleteModal.storyId));
+            setDeleteModal({ isOpen: false, storyId: '', storyTitle: '' });
+        } catch (err: any) {
+            alert('Erro ao excluir história: ' + err.message);
+        }
+    };
+
+    const handleCancelDelete = () => {
+        setDeleteModal({ isOpen: false, storyId: '', storyTitle: '' });
+    };
+
     const handleBackToDashboard = async () => {
         setView('dashboard');
         setSelectedStoryId(null);
-        // Refresh stories list
         await fetchStories();
     };
 
-    const getStatusBadge = (status: string) => {
-        const styles = {
-            draft: 'bg-yellow-100 text-yellow-800',
-            generating: 'bg-blue-100 text-blue-800',
-            complete: 'bg-green-100 text-green-800',
-            error: 'bg-red-100 text-red-800',
-        };
-
-        const labels = {
-            draft: 'Rascunho',
-            generating: 'Gerando',
-            complete: 'Completo',
-            error: 'Erro',
-        };
-
-        return (
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status as keyof typeof styles] || styles.draft}`}>
-                {labels[status as keyof typeof labels] || status}
-            </span>
-        );
-    };
-
-    // Show story viewer
     if (view === 'view' && selectedStoryId) {
         return <StoryViewer storyId={selectedStoryId} onBack={handleBackToDashboard} />;
     }
 
-    // Show create form
     if (view === 'create') {
         return <CreateStoryForm onCancel={handleCancelCreate} onSuccess={handleStoryCreated} />;
     }
 
-    // Show dashboard
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50">
-            {/* Header */}
-            <div className="bg-white border-b shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                                Magic Story Studio
-                            </h1>
-                            <p className="text-sm text-muted-foreground mt-1">{user?.email}</p>
-                        </div>
-                        <button
-                            onClick={signOut}
-                            className="flex items-center gap-2 px-4 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                            <LogOut className="h-4 w-4" />
-                            Sair
-                        </button>
-                    </div>
+        <div className="w-full">
+            {/* Action Bar / Chips */}
+            <div className="mb-6 flex overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex gap-3">
+                    <button className="px-4 py-2 bg-gray-900 text-white rounded-full text-sm font-medium whitespace-nowrap">Tudo</button>
+                    <button className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-full text-sm font-medium transition-colors whitespace-nowrap">Histórias para Crianças</button>
+                    <button className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-full text-sm font-medium transition-colors whitespace-nowrap">Rascunhos</button>
+                    <button className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-full text-sm font-medium transition-colors whitespace-nowrap">Gerados por IA</button>
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Create Button */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-8"
-                >
+            {loading && (
+                <div className="flex flex-col items-center justify-center py-20">
+                    <Loader2 className="h-10 w-10 animate-spin text-[#FF0000] mb-4" />
+                    <p className="text-gray-500">Carregando...</p>
+                </div>
+            )}
+
+            {!loading && !error && stories.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+                        <BookOpen className="h-12 w-12 text-gray-400" />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Comece sua primeira história</h2>
+                    <p className="text-gray-500 max-w-md mb-6">Crie histórias mágicas e personalizadas em segundos.</p>
                     <button
                         onClick={handleCreateStory}
-                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-lg"
+                        className="px-6 py-2 bg-[#FF0000] text-white rounded-full font-medium hover:bg-red-700 transition-colors"
                     >
-                        <Plus className="h-5 w-5" />
-                        Criar Nova História
+                        Criar História
                     </button>
-                </motion.div>
+                </div>
+            )}
 
-                {/* Loading State */}
-                {loading && (
-                    <div className="flex flex-col items-center justify-center py-16">
-                        <Loader2 className="h-12 w-12 animate-spin text-purple-600 mb-4" />
-                        <p className="text-muted-foreground">Carregando suas histórias...</p>
-                    </div>
-                )}
+            {!loading && !error && stories.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
+                    {/* Create New Card */}
+                    <motion.button
+                        onClick={handleCreateStory}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        className="group flex flex-col h-full text-left"
+                    >
+                        <div className="relative aspect-video bg-gray-100 rounded-xl overflow-hidden mb-3 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center group-hover:border-[#FF0000] group-hover:bg-red-50 transition-colors">
+                            <Plus className="h-12 w-12 text-gray-400 group-hover:text-[#FF0000] mb-2 transition-colors" />
+                            <span className="text-sm font-medium text-gray-500 group-hover:text-[#FF0000]">Criar Nova</span>
+                        </div>
+                        <div className="px-1">
+                            <h3 className="font-semibold text-gray-900 line-clamp-2 leading-tight mb-1 group-hover:text-[#FF0000]">
+                                Nova História Mágica
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                Clique para começar
+                            </p>
+                        </div>
+                    </motion.button>
 
-                {/* Error State */}
-                {error && (
+                    {stories.map((story, index) => (
+                        <motion.div
+                            key={story.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                            className="group cursor-pointer flex flex-col h-full"
+                            onClick={() => handleOpenStory(story.id)}
+                        >
+                            {/* Thumbnail */}
+                            <div className="relative aspect-video bg-gray-200 rounded-xl overflow-hidden mb-3 group-hover:rounded-none transition-all duration-200">
+                                {/* Gradient Placeholder for now (Random color based on title length?) */}
+                                <div className={`absolute inset-0 bg-gradient-to-br ${story.status === 'complete' ? 'from-red-500 to-pink-600' : 'from-gray-300 to-gray-400'
+                                    } opacity-80 group-hover:opacity-100 transition-opacity`} />
+
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    {story.status === 'complete' ? (
+                                        <Play className="h-12 w-12 text-white opacity-80 group-hover:scale-110 transition-transform shadow-lg drop-shadow-md" fill="currentColor" />
+                                    ) : (
+                                        <Clock className="h-8 w-8 text-white opacity-60" />
+                                    )}
+                                </div>
+
+                                {/* Duration / Status Badge */}
+                                <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/80 rounded flex items-center gap-1">
+                                    <span className="text-xs font-medium text-white">
+                                        {story.status === 'complete' ? '2:45' : 'RASCUNHO'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Info */}
+                            <div className="px-1">
+                                <div className="flex justify-between items-start">
+                                    <h3 className="font-semibold text-gray-900 line-clamp-2 leading-tight mb-1 group-hover:text-black">
+                                        {story.title || 'Sem título'}
+                                    </h3>
+                                    <button
+                                        onClick={(e) => handleDeleteClick(e, story.id, story.title)}
+                                        className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 rounded-full transition-all text-gray-400 hover:text-red-500"
+                                        title="Excluir"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                </div>
+
+                                <div className="text-sm text-gray-500 flex flex-col">
+                                    <span>Magic Studio • {story.age_group}</span>
+                                    <span className="flex items-center gap-1 mt-0.5 text-xs">
+                                        {story.status === 'complete' ? '12 mil visualizações •' : ''} {new Date(story.created_at).toLocaleDateString()}
+                                    </span>
+                                </div>
+                            </div>
+                        </motion.div>
+                    ))}
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deleteModal.isOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="bg-red-50 border border-red-200 rounded-xl p-6 flex items-start gap-3"
+                        className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl"
                     >
-                        <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                            <h3 className="font-semibold text-red-900 mb-1">Erro ao carregar histórias</h3>
-                            <p className="text-sm text-red-700">{error}</p>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Deseja excluir?</h3>
+                        <p className="text-gray-600 mb-6">
+                            A história <strong>"{deleteModal.storyTitle}"</strong> será excluída permanentemente.
+                        </p>
+                        <div className="flex gap-3 justify-end">
                             <button
-                                onClick={fetchStories}
-                                className="mt-3 text-sm font-medium text-red-600 hover:text-red-700"
+                                onClick={handleCancelDelete}
+                                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors"
                             >
-                                Tentar novamente
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleConfirmDelete}
+                                className="px-4 py-2 bg-[#FF0000] text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+                            >
+                                Excluir
                             </button>
                         </div>
                     </motion.div>
-                )}
-
-                {/* Empty State */}
-                {!loading && !error && stories.length === 0 && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="bg-white rounded-xl border shadow-sm p-12 text-center"
-                    >
-                        <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <BookOpen className="h-10 w-10 text-purple-600" />
-                        </div>
-                        <h2 className="text-2xl font-bold mb-2">Nenhuma história criada ainda</h2>
-                        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                            Comece sua jornada mágica criando sua primeira história infantil com IA!
-                        </p>
-                        <button
-                            onClick={handleCreateStory}
-                            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
-                        >
-                            <Plus className="h-5 w-5" />
-                            Criar Minha Primeira História
-                        </button>
-                    </motion.div>
-                )}
-
-                {/* Stories List */}
-                {!loading && !error && stories.length > 0 && (
-                    <div className="space-y-4">
-                        <h2 className="text-lg font-semibold mb-4">Minhas Histórias ({stories.length})</h2>
-                        {stories.map((story, index) => (
-                            <motion.div
-                                key={story.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: index * 0.05 }}
-                                className="bg-white rounded-xl border shadow-sm p-6 hover:shadow-md transition-shadow"
-                            >
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <h3 className="text-lg font-semibold truncate">{story.title}</h3>
-                                            {getStatusBadge(story.status)}
-                                        </div>
-                                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                            <span className="flex items-center gap-1">
-                                                <Calendar className="h-4 w-4" />
-                                                {new Date(story.created_at).toLocaleDateString('pt-BR', {
-                                                    day: '2-digit',
-                                                    month: 'short',
-                                                    year: 'numeric',
-                                                })}
-                                            </span>
-                                            <span>Idade: {story.age_group}</span>
-                                            <span className="capitalize">Tom: {story.tone}</span>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleOpenStory(story.id)}
-                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors flex-shrink-0"
-                                    >
-                                        Abrir
-                                    </button>
-                                </div>
-                            </motion.div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 }
