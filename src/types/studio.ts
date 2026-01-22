@@ -9,12 +9,16 @@
 export interface StoryConfig {
     title: string;
     duration: number; // minutes (2-10)
-    scenePauseDuration: number; // average scene duration in seconds (10, 15, 20)
+export interface StoryConfig {
+    title: string;
+    duration: number; // minutes (2-10)
+    sceneCount: number; // desired number of scenes (15, 20, 25)
     visualStyle: VisualStyle;
     voiceName?: string; // Gemini TTS voice (Kore, Charon, Aoede, Fenrir, Puck)
     emotion?: string; // Narration emotion (cheerfully, sadly, excitedly, calmly, mysteriously, warmly)
     ageGroup?: string; // '3-5', '6-8', '9-12'
     tone?: string; // 'calma', 'aventura', 'educativa'
+    storyIdea?: string; // Optional user prompt/idea
 }
 
 export type VisualStyle =
@@ -65,10 +69,10 @@ export type SceneEmotion =
 export interface CharacterDNA {
     name: string;
     species: string; // 'Coelho', 'Gato', 'Dragão', etc.
-    mainColors: string[]; // ['branco', 'marrom']
     clothing: string; // 'Camiseta azul com estrelas'
     accessories: string; // 'Chapéu mágico dourado'
     description: string; // Full character sheet
+    full_description?: string; // Additional detailed description if available
     status: 'protagonist' | 'supporting' | 'background';
 }
 
@@ -80,6 +84,7 @@ export interface StoryWithScenes extends StoryWithNarration {
     characters: Record<string, CharacterDNA>;
     characterReferenceImage?: string | null; // Backwards compatibility - first character
     characterReferenceImages?: Record<string, string>; // All character reference images by name
+    thumbnailUrl?: string; // URL of the generated thumbnail (Title Card)
 }
 
 /**
@@ -135,6 +140,7 @@ export type StudioStep =
     | 'CONFIG'
     | 'NARRATION'
     | 'SCENES'
+    | 'THUMBNAIL'
     | 'IMAGES'
     | 'TIMELINE'
     | 'EDITOR';

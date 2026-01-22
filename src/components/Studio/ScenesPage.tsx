@@ -42,7 +42,9 @@ export function ScenesPage({ story, onComplete, onBack }: ScenesPageProps) {
             // 1. Generate scenes
             const scenesResult = await generateScenesWithGemini({
                 narration_text: story.storyText,
-                duration: story.duration
+                duration: story.duration,
+                targetSceneCount: story.sceneCount,
+                title: story.title
             });
 
             const generatedScenes: Scene[] = scenesResult.scenes.map((scene: any, index: number) => ({
@@ -52,7 +54,8 @@ export function ScenesPage({ story, onComplete, onBack }: ScenesPageProps) {
                 visualDescription: scene.visual_description,
                 emotion: scene.emotion || 'calma',
                 durationEstimate: scene.duration_estimate || 15,
-                characters: scene.characters || []
+                characters: scene.characters || [],
+                imagePrompt: scene.image_prompt
             }));
 
             setScenes(generatedScenes);
@@ -222,7 +225,7 @@ TECHNICAL:
 
                             {/* Characters Grid */}
                             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {Object.values(characters).map((character) => {
+                                {Object.values(characters).map((character: CharacterDNA) => {
                                     const hasImage = !!characterReferenceImages[character.name];
                                     const isGenerating = generatingCharacterImages[character.name];
                                     const error = characterImageErrors[character.name];

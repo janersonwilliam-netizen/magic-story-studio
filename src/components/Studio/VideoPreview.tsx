@@ -250,75 +250,68 @@ export function VideoPreview({
     };
 
     return (
-        <div className="space-y-4">
-            {/* Canvas - 60% of full width (40% reduction) */}
-            <div className="relative bg-black rounded-lg overflow-hidden w-full" style={{ maxWidth: '60%', margin: '0 auto' }}>
+        <div className="h-full flex flex-col">
+            {/* Video Canvas Container - Clean, no overlay */}
+            <div className="flex-1 relative bg-black rounded-t-lg overflow-hidden flex items-center justify-center min-h-0">
                 <canvas
                     ref={canvasRef}
                     width={1920}
                     height={1080}
-                    className="w-full h-auto"
+                    className="max-w-full max-h-full"
                     style={{ aspectRatio: '16/9' }}
                 />
-
-                {/* Hidden audio element */}
-                <audio
-                    ref={audioRef}
-                    muted={muted}
-                />
+                <audio ref={audioRef} muted={muted} />
             </div>
 
-            {/* Controls */}
-            <div className="space-y-3">
+            {/* Control Bar - Professional Editor Style */}
+            <div className="flex-shrink-0 bg-gray-900 rounded-b-lg px-4 py-3 space-y-2">
                 {/* Progress bar */}
                 <div
-                    className="h-2 bg-gray-200 rounded-full cursor-pointer hover:h-3 transition-all"
+                    className="h-1 bg-gray-700 rounded-full cursor-pointer hover:h-1.5 transition-all group"
                     onClick={handleSeek}
                 >
                     <div
-                        className="h-full bg-[#FF0000] rounded-full transition-all"
+                        className="h-full bg-red-500 rounded-full transition-all relative"
                         style={{ width: `${(currentTime / totalDuration) * 100}%` }}
-                    />
+                    >
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                 </div>
 
-                {/* Control buttons */}
+                {/* Controls Row */}
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={onPlayPause}
-                            className="p-3 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors"
-                        >
-                            {isPlaying ? (
-                                <Pause className="w-5 h-5" />
-                            ) : (
-                                <Play className="w-5 h-5" />
-                            )}
-                        </button>
-
-                        <button
-                            onClick={onStop}
-                            className="p-3 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors"
-                        >
-                            <Square className="w-5 h-5" />
-                        </button>
-
-                        <button
-                            onClick={() => setMuted(!muted)}
-                            className="p-3 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors"
-                        >
-                            {muted ? (
-                                <VolumeX className="w-5 h-5" />
-                            ) : (
-                                <Volume2 className="w-5 h-5" />
-                            )}
-                        </button>
-
-                        <span className="text-sm text-gray-600 ml-2">
-                            {formatTime(currentTime)} / {formatTime(totalDuration)}
-                        </span>
+                    {/* Left - Time */}
+                    <div className="text-xs text-gray-400 font-mono w-24">
+                        {formatTime(currentTime)} / {formatTime(totalDuration)}
                     </div>
 
-                    <div className="text-sm text-gray-500">
+                    {/* Center - Play Controls */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={onStop}
+                            className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center transition-colors"
+                            title="Stop"
+                        >
+                            <Square className="w-3.5 h-3.5 text-white" />
+                        </button>
+                        <button
+                            onClick={onPlayPause}
+                            className="w-10 h-10 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors shadow-lg"
+                            title={isPlaying ? "Pause" : "Play"}
+                        >
+                            {isPlaying ? <Pause className="w-5 h-5 text-white" /> : <Play className="w-5 h-5 text-white ml-0.5" />}
+                        </button>
+                        <button
+                            onClick={() => setMuted(!muted)}
+                            className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center transition-colors"
+                            title={muted ? "Unmute" : "Mute"}
+                        >
+                            {muted ? <VolumeX className="w-3.5 h-3.5 text-white" /> : <Volume2 className="w-3.5 h-3.5 text-white" />}
+                        </button>
+                    </div>
+
+                    {/* Right - Scene count */}
+                    <div className="text-xs text-gray-500 w-24 text-right">
                         {clips.filter(c => c.type === 'video').length} cenas
                     </div>
                 </div>

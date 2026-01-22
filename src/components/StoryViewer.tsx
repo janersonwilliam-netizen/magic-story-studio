@@ -27,7 +27,10 @@ interface Story {
     story_text: string | null;
     narration_text: string | null;
     status: string;
+    narrative_text?: string; // some databases might use this
+    status: string;
     full_audio_url?: string;
+    custom_instructions: string | null;
 }
 
 export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
@@ -252,9 +255,20 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
             setError('');
             await supabase.from('scenes').delete().eq('story_id', storyId);
 
+            // Extract target scene count from custom_instructions if available
+            let targetSceneCount: number | undefined;
+            if (story.custom_instructions) {
+                const match = story.custom_instructions.match(/\[SCENE_COUNT:\s*(\d+)\]/);
+                if (match && match[1]) {
+                    targetSceneCount = parseInt(match[1]);
+                    console.log('[StoryViewer] Found target scene count:', targetSceneCount);
+                }
+            }
+
             const result = await generateScenesWithGemini({
                 narration_text: story.narration_text || story.story_text,
                 duration: story.duration,
+                targetSceneCount
             });
 
             const { data } = await supabase.from('scenes').insert(

@@ -19,7 +19,7 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
         age_group: '6-8',
         tone: 'aventura',
         duration: 3, // Duração da história em minutos (texto)
-        scene_duration: 15, // Duração de cada cena em segundos (vídeo)
+        scene_count: 20, // Quantidade de cenas desejada (15, 20, 25)
         custom_instructions: '',
     });
 
@@ -39,21 +39,33 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
             }
 
             // Criar história no banco
-            // Armazenamos scene_duration dentro de custom_instructions para evitar migração de banco
-            const instructionsWithMeta = `${formData.custom_instructions.trim()}\n[SCENE_DURATION: ${formData.scene_duration}]`.trim();
+            // Armazenamos scene_count dentro de custom_instructions para evitar migração de banco
+            const instructionsWithMeta = `${formData.custom_instructions.trim()}\n[SCENE_COUNT: ${formData.scene_count}]`.trim();
 
+            // Construir o StudioState inicial para garantir persistência do rascunho
+            const initialStudioState = {
+                currentStep: 'NARRATION', // Pula CONFIG porque o formulário já é a configuração
+                config: {
+                    title: formData.title.trim(),
+                    duration: formData.duration,
+                    sceneCount: formData.scene_count,
+                    visualStyle: 'Estilo Pixar 3D' as const,
+                    ageGroup: formData.age_group,
+                    tone: formData.tone,
+                    storyIdea: formData.custom_instructions.trim() || undefined
+                }
+            };
+
+            // IMPORTANT: Only use columns that exist in the database schema!
+            // Schema has: id, user_id, title, preview_image, data, is_complete, created_at, updated_at
+            // All other config goes in the 'data' JSONB field
             const { data, error: insertError } = await supabase
                 .from('stories')
                 .insert({
                     user_id: user?.id,
                     title: formData.title.trim(),
-                    age_group: formData.age_group,
-                    tone: formData.tone,
-                    duration: formData.duration, // Minutos (Texto)
-                    // scene_duration removido pois não existe no banco
-                    visual_style: '3D Pixar/DreamWorks',
-                    custom_instructions: instructionsWithMeta || null,
-                    status: 'draft',
+                    data: initialStudioState, // All config saved in JSONB 'data' field
+                    is_complete: false,
                 })
                 .select()
                 .single();
@@ -201,40 +213,37 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                             </div>
                         </div>
 
-                        {/* Duração por Cena */}
+                        {/* Quantidade de Cenas */}
                         <div className="space-y-4 pt-4 border-t border-dashed">
                             <div className="flex items-center justify-between">
-                                <label htmlFor="scene_duration" className="text-sm font-medium flex items-center gap-2">
+                                <label className="text-sm font-medium flex items-center gap-2">
                                     <Clock className="h-4 w-4 text-[#FF0000]" />
-                                    Duração por Cena (Vídeo)
+                                    Quantidade de Cenas
                                 </label>
                                 <span className="text-sm font-bold text-[#FF0000] bg-red-50 px-3 py-1 rounded-full border border-red-100">
-                                    {formData.scene_duration} segundos
+                                    {formData.scene_count} cenas
                                 </span>
                             </div>
 
-                            <div className="relative">
-                                <input
-                                    id="scene_duration"
-                                    type="range"
-                                    min="10"
-                                    max="30"
-                                    step="1"
-                                    value={formData.scene_duration}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, scene_duration: parseInt(e.target.value) })
-                                    }
-                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#FF0000]"
-                                    disabled={loading}
-                                />
-                                <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                                    <span>10s (Rápido)</span>
-                                    <span>20s (Normal)</span>
-                                    <span>30s (Detalhado)</span>
-                                </div>
+                            <div className="grid grid-cols-3 gap-3">
+                                {[15, 20, 25].map((count) => (
+                                    <button
+                                        key={count}
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, scene_count: count })}
+                                        disabled={loading}
+                                        className={`p-3 border-2 rounded-lg text-center transition-all ${formData.scene_count === count
+                                            ? 'border-[#FF0000] bg-red-50 text-[#FF0000] font-bold'
+                                            : 'border-gray-200 hover:border-red-300 text-gray-600'
+                                            }`}
+                                    >
+                                        <div className="text-lg">{count}</div>
+                                        <div className="text-xs text-muted-foreground">Cenas</div>
+                                    </button>
+                                ))}
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                Define quanto tempo cada cena terá no vídeo final.
+                                Define em quantas partes a história será dividida para o vídeo.
                             </p>
                         </div>
 

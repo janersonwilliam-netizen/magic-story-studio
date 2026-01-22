@@ -8,11 +8,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StoryWithScenes } from '../../types/studio';
 import { generateImagePrompt } from '../../services/gemini';
-import { Loader2, Check, Image as ImageIcon, AlertCircle, Download } from 'lucide-react';
+import { Loader2, Check, Image as ImageIcon, AlertCircle, Download, RefreshCw } from 'lucide-react';
+import JSZip from 'jszip';
 
 interface ImagesPageProps {
     storyWithScenes: StoryWithScenes;
-    onComplete: () => void;
+    onComplete: (updatedStory: StoryWithScenes) => void;
     onBack: () => void;
 }
 
@@ -65,23 +66,112 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 console.log(`[ImagesPage] Generating image for scene ${i + 1}/${storyWithScenes.scenes.length}`);
                 console.log(`[ImagesPage] Scene characters:`, scene.characters);
 
-                // 1. Generate optimized image prompt
-                const characterDescriptions = Object.values(storyWithScenes.characters)
-                    .map(char => char.description)
-                    .join('\n\n');
+                // --- OPTIMIZATION: SKIP FIRST SCENE (THUMBNAIL) ---
+                if (i === 0 && storyWithScenes.thumbnailUrl) {
+                    console.log('[ImagesPage] OPTIMIZATION: Skipping Scene 1 (Using existing Thumbnail)');
 
-                const promptResult = await generateImagePrompt({
-                    visual_description: scene.visualDescription,
-                    emotion: scene.emotion,
-                    characters: scene.characters,
-                    visual_style: storyWithScenes.visualStyle,
-                    characterDescriptions
-                });
+                    setGenerationStatus(prev => ({
+                        ...prev,
+                        [scene.id]: {
+                            ...prev[scene.id],
+                            status: 'complete',
+                            imageUrl: storyWithScenes.thumbnailUrl
+                        }
+                    }));
 
-                // generateImagePrompt returns a string directly
-                const optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
+                    scene.imageUrl = storyWithScenes.thumbnailUrl;
+                    scene.imagePrompt = "Existing Thumbnail (Skipped Generation)";
 
-                console.log(`[ImagesPage] Generated prompt for scene ${scene.order}:`, optimizedPrompt);
+                    await new Promise(resolve => setTimeout(resolve, 100)); // Brief pause for UI update
+                    continue;
+                }
+
+                // --- OPTIMIZATION: SKIP LAST SCENE (ENDING CARD) ---
+                // If it's the last scene, force usage of the Ending Card
+                if (i === storyWithScenes.scenes.length - 1) {
+                    console.log('[ImagesPage] OPTIMIZATION: Skipping Last Scene (Using Ending Card)');
+                    try {
+                        const { storage } = await import('../../lib/storage');
+                        const files = await storage.getAllFiles();
+                        const defaultEnding = files.find((f: any) => f.category === 'ending_card' && f.isDefault);
+
+                        if (defaultEnding) {
+                            console.log('[ImagesPage] Using default ending card from library');
+                            setGenerationStatus(prev => ({
+                                ...prev,
+                                [scene.id]: {
+                                    ...prev[scene.id],
+                                    status: 'complete',
+                                    imageUrl: defaultEnding.url
+                                }
+                            }));
+                            scene.imageUrl = defaultEnding.url;
+                            scene.imagePrompt = "Default Ending Card (From Library)";
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            continue;
+                        }
+                    } catch (err) {
+                        console.error('[ImagesPage] Error reading ending card:', err);
+                    }
+                    // If no card found, let it generate the fallback or proceed normally (optional: forcing a specific prompt here could act as backup)
+                }
+
+                // 1. Optimize Prompt or Use Pre-defined
+                let optimizedPrompt = scene.imagePrompt;
+
+                // Handle Ending Card Special Case
+                if (optimizedPrompt === 'ENDING_CARD_PLACEHOLDER') {
+                    try {
+                        const { storage } = await import('../../lib/storage');
+                        const files = await storage.getAllFiles();
+                        const defaultEnding = files.find((f: any) => f.category === 'ending_card' && f.isDefault);
+
+                        if (defaultEnding) {
+                            console.log('[ImagesPage] Using default ending card from library');
+
+                            setGenerationStatus(prev => ({
+                                ...prev,
+                                [scene.id]: {
+                                    ...prev[scene.id],
+                                    status: 'complete',
+                                    imageUrl: defaultEnding.url
+                                }
+                            }));
+
+                            scene.imageUrl = defaultEnding.url;
+                            scene.imagePrompt = "Default Ending Card (From Library)";
+
+                            // Skip to next scene
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            continue;
+                        }
+                    } catch (err) {
+                        console.error('[ImagesPage] Error reading ending card from library:', err);
+                    }
+
+                    // Fallback if no card found
+                    optimizedPrompt = "Vibrant Youtube Ending Card. Text: 'Inscreva-se'. Pixar Style background, cute characters waving goodbye.";
+                }
+
+                if (!optimizedPrompt) {
+                    const characterDescriptionsMap: Record<string, string> = {};
+                    Object.values(storyWithScenes.characters).forEach(char => {
+                        characterDescriptionsMap[char.name] = char.description;
+                    });
+
+                    const promptResult = await generateImagePrompt({
+                        visual_description: scene.visualDescription,
+                        emotion: scene.emotion,
+                        characters: scene.characters,
+                        visual_style: storyWithScenes.visualStyle,
+                        characterDescriptions: characterDescriptionsMap
+                    });
+
+                    // generateImagePrompt returns a string directly
+                    optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
+                }
+
+                console.log(`[ImagesPage] Using prompt for scene ${scene.order}:`, optimizedPrompt);
 
                 // 2. Collect reference images for characters in THIS scene
                 const sceneReferenceImages: string[] = [];
@@ -89,6 +179,19 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
 
                 if (scene.characters && scene.characters.length > 0) {
                     for (const characterName of scene.characters) {
+
+                        // SPECIAL CASE: Handle __PROTAGONIST__ marker for Intro/Outro
+                        if (characterName === '__PROTAGONIST__') {
+                            // Find the first character with a reference image (assumed main character)
+                            const firstCharName = Object.keys(characterReferences)[0];
+                            if (firstCharName && characterReferences[firstCharName]) {
+                                sceneReferenceImages.push(characterReferences[firstCharName]);
+                                sceneCharacterStatuses.push('protagonist');
+                                console.log(`[ImagesPage] Resolved __PROTAGONIST__ to ${firstCharName}`);
+                            }
+                            continue;
+                        }
+
                         if (characterReferences[characterName]) {
                             sceneReferenceImages.push(characterReferences[characterName]);
 
@@ -110,7 +213,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                     // Use Gemini 3 Pro with character references AND statuses
                     const { generateImageWithReferences } = await import('../../services/google_image');
                     imageUrl = await generateImageWithReferences(
-                        optimizedPrompt,
+                        optimizedPrompt!,
                         sceneReferenceImages,
                         sceneCharacterStatuses // Pass statuses for conditional duplication
                     );
@@ -118,7 +221,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 } else {
                     // Fallback to standard generation if no references
                     const { generateImageWithNanoBanana } = await import('../../services/google_image');
-                    imageUrl = await generateImageWithNanoBanana(optimizedPrompt);
+                    imageUrl = await generateImageWithNanoBanana(optimizedPrompt!);
                     console.log(`[ImagesPage] Scene ${i + 1} generated without references`);
                 }
 
@@ -181,7 +284,34 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
             // generateImagePrompt returns a string directly
             const optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
 
-            const imageUrl = await generateImageWithNanoBanana(optimizedPrompt);
+            // Collect reference images using the same logic as startGeneration
+            const characterReferences = storyWithScenes.characterReferenceImages || {};
+            const sceneReferenceImages: string[] = [];
+            const sceneCharacterStatuses: string[] = [];
+
+            if (scene.characters && scene.characters.length > 0) {
+                for (const characterName of scene.characters) {
+                    if (characterReferences[characterName]) {
+                        sceneReferenceImages.push(characterReferences[characterName]);
+                        const characterData = storyWithScenes.characters[characterName];
+                        sceneCharacterStatuses.push(characterData?.status || 'supporting');
+                    }
+                }
+            }
+
+            let imageUrl: string;
+
+            if (sceneReferenceImages.length > 0) {
+                const { generateImageWithReferences } = await import('../../services/google_image');
+                imageUrl = await generateImageWithReferences(
+                    optimizedPrompt,
+                    sceneReferenceImages,
+                    sceneCharacterStatuses
+                );
+            } else {
+                const { generateImageWithNanoBanana } = await import('../../services/google_image');
+                imageUrl = await generateImageWithNanoBanana(optimizedPrompt);
+            }
 
             setGenerationStatus(prev => ({
                 ...prev,
@@ -196,6 +326,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
             scene.imagePrompt = optimizedPrompt;
 
         } catch (error: any) {
+            console.error(`[ImagesPage] Error regenerating scene ${scene.order}:`, error);
             setGenerationStatus(prev => ({
                 ...prev,
                 [sceneId]: {
@@ -241,25 +372,67 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
     /**
      * Download all completed images as a zip (simplified: download one by one)
      */
-    const downloadAllImages = () => {
+    /**
+     * Download all completed images as a zip
+     */
+    const downloadAllImages = async () => {
+        const zip = new JSZip();
+        let count = 0;
+
+        // Add images to zip
         storyWithScenes.scenes.forEach((scene) => {
             const status = generationStatus[scene.id];
             if (status?.status === 'complete' && status.imageUrl) {
-                // Small delay between downloads to avoid browser blocking
-                setTimeout(() => {
-                    downloadImage(status.imageUrl!, scene.order);
-                }, scene.order * 500); // 500ms delay between each download
+                const imgData = status.imageUrl.split(',')[1];
+                zip.file(`cena_${scene.order}.png`, imgData, { base64: true });
+                count++;
             }
         });
+
+        if (count > 0) {
+            try {
+                const content = await zip.generateAsync({ type: 'blob' });
+                const url = window.URL.createObjectURL(content);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `imagens_historia.zip`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                console.log(`[ImagesPage] Downloaded zip with ${count} images`);
+            } catch (error) {
+                console.error('[ImagesPage] Error generating zip:', error);
+            }
+        }
     };
 
-    const completedCount = Object.values(generationStatus).filter(s => s.status === 'complete').length;
-    const errorCount = Object.values(generationStatus).filter(s => s.status === 'error').length;
+    const completedCount = Object.values(generationStatus).filter((s: ImageGenerationStatus) => s.status === 'complete').length;
+    const errorCount = Object.values(generationStatus).filter((s: ImageGenerationStatus) => s.status === 'error').length;
     const totalScenes = storyWithScenes.scenes.length;
     const progress = (completedCount / totalScenes) * 100;
 
     const allComplete = completedCount === totalScenes;
     const canProceed = completedCount > 0; // Allow proceeding even if some failed
+
+    // Build updated story with all generated image URLs
+    const handleComplete = () => {
+        const updatedScenes = storyWithScenes.scenes.map(scene => {
+            const status = generationStatus[scene.id];
+            if (status?.imageUrl) {
+                return { ...scene, imageUrl: status.imageUrl };
+            }
+            return scene;
+        });
+
+        const updatedStory: StoryWithScenes = {
+            ...storyWithScenes,
+            scenes: updatedScenes
+        };
+
+        console.log('[ImagesPage] Passing updated story with', updatedScenes.filter(s => s.imageUrl).length, 'images');
+        onComplete(updatedStory);
+    };
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -314,7 +487,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 transition={{ delay: index * 0.1 }}
-                                className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden border-2 border-gray-200"
+                                className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden border-2 border-gray-200 group"
                             >
                                 {/* Scene Number */}
                                 <div className="absolute top-2 left-2 w-8 h-8 bg-[#FF0000] text-white rounded-full flex items-center justify-center font-bold text-sm z-10">
@@ -356,8 +529,25 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                                                 <Check className="w-4 h-4 text-white" />
                                             </div>
                                         </div>
+
+                                        {/* Regenerate Button (On Hover) */}
+                                        {!generating && (
+                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        retryScene(scene.id);
+                                                    }}
+                                                    className="w-8 h-8 bg-white/90 hover:bg-white text-gray-700 hover:text-[#FF0000] rounded-full flex items-center justify-center shadow-lg transition-colors border border-gray-200"
+                                                    title="Regenerar imagem"
+                                                >
+                                                    <RefreshCw className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </>
-                                )}
+                                )
+                                }
 
                                 {/* Error State */}
                                 {status?.status === 'error' && (
@@ -377,18 +567,20 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 </div>
 
                 {/* Download All Button */}
-                {completedCount > 0 && (
-                    <div className="mb-4">
-                        <button
-                            onClick={downloadAllImages}
-                            disabled={generating}
-                            className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            <Download className="w-5 h-5" />
-                            Baixar Todas as Imagens ({completedCount})
-                        </button>
-                    </div>
-                )}
+                {
+                    completedCount > 0 && (
+                        <div className="mb-4">
+                            <button
+                                onClick={downloadAllImages}
+                                disabled={generating}
+                                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                <Download className="w-5 h-5" />
+                                Baixar Todas as Imagens ({completedCount})
+                            </button>
+                        </div>
+                    )
+                }
 
                 {/* Action Buttons */}
                 <div className="flex gap-4">
@@ -400,7 +592,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                         ← Voltar
                     </button>
                     <button
-                        onClick={onComplete}
+                        onClick={handleComplete}
                         disabled={!canProceed || generating}
                         className="flex-1 px-6 py-3 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
@@ -417,7 +609,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                         )}
                     </button>
                 </div>
-            </motion.div>
-        </div>
+            </motion.div >
+        </div >
     );
 }

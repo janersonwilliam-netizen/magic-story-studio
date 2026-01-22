@@ -13,19 +13,102 @@ import { ImagesPage } from './ImagesPage';
 import { TimelinePage } from './TimelinePage';
 
 // Import Studio pages (will be created in Sprint 5+)
+import { ThumbnailPage } from './ThumbnailPage';
 // import { EditorPage } from './EditorPage';
 
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { storyStorage, StoryProject } from '../../lib/storyStorage';
+import { Loader2 } from 'lucide-react';
+
 export function StudioIndex() {
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const storyId = searchParams.get('id');
+
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [studioState, setStudioState] = useState<StudioState>({
         currentStep: 'CONFIG'
     });
 
+    // Load story on mount if ID exists
+    React.useEffect(() => {
+        if (storyId) {
+            loadStory(storyId);
+        }
+    }, [storyId]);
+
+    const loadStory = async (id: string) => {
+        setIsLoading(true);
+        try {
+            const story = await storyStorage.getStory(id);
+            if (story) {
+                console.log('[Studio] Loaded story:', story.title);
+
+                // Safety check: ensure data has a valid currentStep
+                const loadedData = story.data;
+                if (!loadedData || !loadedData.currentStep) {
+                    console.warn('[Studio] Story data is empty or missing currentStep. Defaulting to CONFIG.');
+                    setStudioState({ currentStep: 'CONFIG' });
+                } else {
+                    setStudioState(loadedData);
+                }
+            }
+        } catch (error) {
+            console.error('[Studio] Error loading story:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const saveProgress = async (newState: StudioState) => {
+        setIsSaving(true);
+        try {
+            // Determine title and ID
+            const title = newState.config?.title || newState.story?.title || 'Nova História';
+            const currentId = storyId || crypto.randomUUID();
+
+            // Get preview image from Scenes/Thumbnail
+            let previewImage: string | undefined;
+            if (newState.storyWithScenes?.scenes) {
+                const intro = newState.storyWithScenes.scenes.find(s => s.visualDescription.includes('TITLE CARD'));
+                if (intro?.imageUrl) previewImage = intro.imageUrl;
+            }
+
+            const project: StoryProject = {
+                id: currentId,
+                title,
+                createdAt: Date.now(), // ideally keep original created date but ok for now
+                updatedAt: Date.now(),
+                previewImage,
+                data: newState,
+                isComplete: newState.currentStep === 'EDITOR'
+            };
+
+            await storyStorage.saveStory(project);
+            console.log('[Studio] Progress saved for:', title);
+
+            // If it's a new story (no ID in URL), update URL without reloading
+            if (!storyId) {
+                const newUrl = `${window.location.pathname}?id=${currentId}`;
+                window.history.replaceState({ path: newUrl }, '', newUrl);
+            }
+
+        } catch (error) {
+            console.error('[Studio] Error saving progress:', error);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const goToStep = (step: StudioStep) => {
-        setStudioState(prev => ({ ...prev, currentStep: step }));
+        const newState = { ...studioState, currentStep: step };
+        setStudioState(newState);
+        saveProgress(newState);
     };
 
     const nextStep = () => {
-        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'IMAGES', 'TIMELINE', 'EDITOR'];
+        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
         const currentIndex = steps.indexOf(studioState.currentStep);
         if (currentIndex < steps.length - 1) {
             goToStep(steps[currentIndex + 1]);
@@ -33,7 +116,7 @@ export function StudioIndex() {
     };
 
     const previousStep = () => {
-        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'IMAGES', 'TIMELINE', 'EDITOR'];
+        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
         const currentIndex = steps.indexOf(studioState.currentStep);
         if (currentIndex > 0) {
             goToStep(steps[currentIndex - 1]);
@@ -42,85 +125,86 @@ export function StudioIndex() {
 
     // Handler for CONFIG page completion
     const handleConfigComplete = (config: StoryConfig) => {
-        setStudioState(prev => ({
-            ...prev,
+        const newState: StudioState = {
+            ...studioState,
             config,
             currentStep: 'NARRATION'
-        }));
+        };
+        setStudioState(newState);
+        saveProgress(newState);
     };
 
     // Handler for NARRATION page completion
     const handleNarrationComplete = (story: StoryWithNarration) => {
-        setStudioState(prev => ({
-            ...prev,
+        const newState: StudioState = {
+            ...studioState,
             story,
             currentStep: 'SCENES'
-        }));
+        };
+        setStudioState(newState);
+        saveProgress(newState);
     };
 
     // Handler for SCENES page completion
     const handleScenesComplete = (storyWithScenes: StoryWithScenes) => {
-        setStudioState(prev => ({
-            ...prev,
+        const newState: StudioState = {
+            ...studioState,
+            storyWithScenes,
+            currentStep: 'THUMBNAIL'
+        };
+        setStudioState(newState);
+        saveProgress(newState);
+    };
+
+    // Handler for THUMBNAIL page completion
+    const handleThumbnailComplete = (storyWithScenes: StoryWithScenes) => {
+        const newState: StudioState = {
+            ...studioState,
             storyWithScenes,
             currentStep: 'IMAGES'
-        }));
+        };
+        setStudioState(newState);
+        saveProgress(newState);
     };
 
     // Handler for IMAGES page completion
     const handleImagesComplete = (storyWithScenes: StoryWithScenes) => {
-        setStudioState(prev => ({
-            ...prev,
+        const newState: StudioState = {
+            ...studioState,
             storyWithScenes,
             currentStep: 'TIMELINE'
-        }));
+        };
+        setStudioState(newState);
+        saveProgress(newState);
     };
 
     // Handler for TIMELINE page completion
     const handleTimelineComplete = (storyWithTimeline: any) => {
-        setStudioState(prev => ({
-            ...prev,
+        const newState: StudioState = {
+            ...studioState,
             storyWithScenes: storyWithTimeline,
             currentStep: 'EDITOR'
-        }));
+        };
+        setStudioState(newState);
+        saveProgress(newState);
     };
 
-    return (
-        <div className="min-h-screen bg-white">
-            {/* Progress indicator */}
-            <div className="bg-[#0f0f0f] text-white p-4">
-                <div className="max-w-7xl mx-auto">
-                    <div className="flex items-center justify-between">
-                        {(['CONFIG', 'NARRATION', 'SCENES', 'IMAGES', 'TIMELINE', 'EDITOR'] as StudioStep[]).map((step, index) => (
-                            <div
-                                key={step}
-                                className={`flex items-center ${index > 0 ? 'flex-1' : ''}`}
-                            >
-                                {index > 0 && (
-                                    <div className={`flex-1 h-1 mx-2 ${studioState.currentStep === step ||
-                                        (['CONFIG', 'NARRATION', 'SCENES', 'IMAGES', 'TIMELINE', 'EDITOR'] as StudioStep[]).indexOf(studioState.currentStep) > index
-                                        ? 'bg-[#FF0000]'
-                                        : 'bg-gray-600'
-                                        }`} />
-                                )}
-                                <div className={`flex flex-col items-center ${studioState.currentStep === step ? 'text-[#FF0000]' : 'text-gray-400'
-                                    }`}>
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${studioState.currentStep === step
-                                        ? 'bg-[#FF0000] text-white'
-                                        : 'bg-gray-600 text-white'
-                                        }`}>
-                                        {index + 1}
-                                    </div>
-                                    <span className="text-xs mt-1 hidden sm:block">{step}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="text-center">
+                    <Loader2 className="w-10 h-10 text-red-600 animate-spin mx-auto mb-4" />
+                    <p className="text-gray-600">Carregando história...</p>
                 </div>
             </div>
+        );
+    }
 
-            {/* Content area */}
-            <div className="max-w-7xl mx-auto p-6">
+    return (
+        <div className="min-h-screen bg-[#FAFAFA] pb-20">
+            {/* Header with Progress could go here, but let's keep it simple for now */}
+
+            <main className="container mx-auto px-4 py-8">
                 {studioState.currentStep === 'CONFIG' && (
                     <ConfigPage onComplete={handleConfigComplete} />
                 )}
@@ -129,7 +213,7 @@ export function StudioIndex() {
                     <NarrationPage
                         config={studioState.config}
                         onComplete={handleNarrationComplete}
-                        onBack={previousStep}
+                        onBack={() => goToStep('CONFIG')}
                     />
                 )}
 
@@ -137,15 +221,23 @@ export function StudioIndex() {
                     <ScenesPage
                         story={studioState.story}
                         onComplete={handleScenesComplete}
-                        onBack={previousStep}
+                        onBack={() => goToStep('NARRATION')}
+                    />
+                )}
+
+                {studioState.currentStep === 'THUMBNAIL' && studioState.storyWithScenes && (
+                    <ThumbnailPage
+                        storyWithScenes={studioState.storyWithScenes}
+                        onComplete={handleThumbnailComplete}
+                        onBack={() => goToStep('SCENES')}
                     />
                 )}
 
                 {studioState.currentStep === 'IMAGES' && studioState.storyWithScenes && (
                     <ImagesPage
                         storyWithScenes={studioState.storyWithScenes}
-                        onComplete={() => handleImagesComplete(studioState.storyWithScenes!)}
-                        onBack={previousStep}
+                        onComplete={handleImagesComplete}
+                        onBack={() => goToStep('THUMBNAIL')}
                     />
                 )}
 
@@ -153,23 +245,34 @@ export function StudioIndex() {
                     <TimelinePage
                         storyWithScenes={studioState.storyWithScenes}
                         onComplete={handleTimelineComplete}
-                        onBack={previousStep}
+                        onBack={() => goToStep('IMAGES')}
                     />
                 )}
 
                 {studioState.currentStep === 'EDITOR' && (
-                    <div className="text-center py-20">
-                        <h1 className="text-4xl font-bold text-gray-900 mb-4">Editor</h1>
-                        <p className="text-gray-600 mb-8">Página de edição será implementada no Sprint 5</p>
+                    <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm p-12 text-center">
+                        <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Loader2 className="w-8 h-8" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Editor de Vídeo</h2>
+                        <p className="text-gray-500 mb-6">Esta funcionalidade está em desenvolvimento.</p>
                         <button
-                            onClick={previousStep}
-                            className="px-6 py-3 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors"
+                            onClick={() => goToStep('TIMELINE')}
+                            className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
                         >
-                            ← Voltar
+                            Voltar para Timeline
                         </button>
                     </div>
                 )}
-            </div>
+            </main>
+
+            {/* Global Saving Indicator */}
+            {isSaving && (
+                <div className="fixed bottom-6 right-6 bg-white shadow-xl border border-gray-100 rounded-full px-5 py-3 flex items-center gap-3 text-sm font-medium z-50 animate-in slide-in-from-bottom-5 fade-in">
+                    <Loader2 className="w-4 h-4 animate-spin text-green-600" />
+                    <span className="text-gray-600">Salvando progresso...</span>
+                </div>
+            )}
         </div>
     );
 }

@@ -23,13 +23,14 @@ function translateAndCompactPrompt(prompt: string): string {
     if (!prompt.match(/CENA:/i) && !prompt.match(/PERSONAGEM:/i) && !prompt.match(/EMOÇÃO:/i)) {
         console.log('[Translate] Raw prompt detected, using as-is');
         // IMPORTANT: Replace newlines and multiple spaces with single space to avoid URL issues
-        return prompt.replace(/\s+/g, ' ').trim().substring(0, 350);
+        return prompt.replace(/\s+/g, ' ').trim().substring(0, 1000);
     }
 
     // Extract key information using regex
-    const sceneMatch = prompt.match(/CENA:([^]*?)(?:EMOÇÃO:|PERSONAGEM:|COMPOSIÇÃO:|IMPORTANTE:|$)/i);
+    const sceneMatch = prompt.match(/CENA:([^]*?)(?:EMOÇÃO:|PERSONAGEM:|COMPOSIÇÃO:|IMPORTANTE:|TITULO:|$)/i);
     const emotionMatch = prompt.match(/EMOÇÃO:\s*(\w+)/i);
-    const characterMatch = prompt.match(/PERSONAGEM:([^]*?)(?:CENA:|EMOÇÃO:|COMPOSIÇÃO:|$)/i);
+    const characterMatch = prompt.match(/PERSONAGEM:([^]*?)(?:CENA:|EMOÇÃO:|COMPOSIÇÃO:|TITULO:|$)/i);
+    const titleMatch = prompt.match(/TITULO:([^]*?)(?:CENA:|EMOÇÃO:|PERSONAGEM:|COMPOSIÇÃO:|$)/i);
 
     // Extract character species/type if specified
     const speciesMatch = prompt.match(/ESPÉCIE:\s*([^\n]+)/i) ||
@@ -40,6 +41,7 @@ function translateAndCompactPrompt(prompt: string): string {
     const emotion = emotionMatch ? emotionMatch[1].trim() : 'calm';
     const character = characterMatch ? characterMatch[1].trim() : '';
     const species = speciesMatch ? speciesMatch[1].trim() : '';
+    const titleText = titleMatch ? titleMatch[1].trim() : '';
 
     // Translate emotion
     const emotionMap: Record<string, string> = {
@@ -101,40 +103,13 @@ function translateAndCompactPrompt(prompt: string): string {
     // Build simplified English prompt - DYNAMIC, not hardcoded
     let optimized = '';
 
-    // Character description (if available)
-    if (character) {
-        let charEN = character;
-        // Apply translations
-        for (const [pt, en] of Object.entries(ptToEnTranslations)) {
-            charEN = charEN.replace(new RegExp(pt, 'gi'), en);
-        }
-        // Additional translations
-        charEN = charEN
-            .replace(/olhos grandes/gi, 'big eyes')
-            .replace(/olhos curiosos/gi, 'curious eyes')
-            .replace(/olhos expressivos/gi, 'expressive eyes')
-            .replace(/manchas marrons/gi, 'brown spots')
-            .replace(/charmosas/gi, 'charming')
-            .replace(/pequeno/gi, 'small')
-            .replace(/grande/gi, 'large')
-            .replace(/fofo/gi, 'cute')
-            .replace(/peludo/gi, 'furry')
-            .replace(/colorido/gi, 'colorful')
-            .replace(/brilhante/gi, 'bright')
-            .replace(/dourado/gi, 'golden')
-            .replace(/prateado/gi, 'silver')
-            .replace(/azul/gi, 'blue')
-            .replace(/vermelho/gi, 'red')
-            .replace(/verde/gi, 'green')
-            .replace(/amarelo/gi, 'yellow')
-            .replace(/3D Pixar\/DreamWorks/gi, '');
-
-        optimized += charEN.substring(0, 120) + '. ';
+    // 1. TEXT/TITLE (Highest Priority for visibility)
+    if (titleText) {
+        optimized += `TEXT RENDER: The text "${titleText}" written in BIG 3D CARTOON MOVIES STYLE LETTERS in the center. Typography must be clearly visible and legible. `;
     }
 
-    // Quality constraints
-    optimized += 'NO deformities, NO extra limbs, correct anatomy. ';
-
+    // 2. SCENE ACTION (Priority for variety)
+    // Put scene BEFORE character details to ensure the specific action isn't lost
     // Scene description (translated and simplified)
     if (scene) {
         let sceneEN = scene;
@@ -172,14 +147,51 @@ function translateAndCompactPrompt(prompt: string): string {
             .replace(/tarde/gi, 'afternoon')
             .replace(/câmera/gi, 'camera');
 
-        optimized += sceneEN.substring(0, 180) + '. ';
+        optimized += `SCENE ACTION: ${sceneEN.substring(0, 800)}. `;
     }
+
+    // 3. CHARACTER DETAILS (After scene to contextualize)
+    // Character description (if available)
+    if (character) {
+        let charEN = character;
+        // Apply translations
+        for (const [pt, en] of Object.entries(ptToEnTranslations)) {
+            charEN = charEN.replace(new RegExp(pt, 'gi'), en);
+        }
+        // Additional translations
+        charEN = charEN
+            .replace(/olhos grandes/gi, 'big eyes')
+            .replace(/olhos curiosos/gi, 'curious eyes')
+            .replace(/olhos expressivos/gi, 'expressive eyes')
+            .replace(/manchas marrons/gi, 'brown spots')
+            .replace(/charmosas/gi, 'charming')
+            .replace(/pequeno/gi, 'small')
+            .replace(/grande/gi, 'large')
+            .replace(/fofo/gi, 'cute')
+            .replace(/peludo/gi, 'furry')
+            .replace(/colorido/gi, 'colorful')
+            .replace(/brilhante/gi, 'bright')
+            .replace(/dourado/gi, 'golden')
+            .replace(/prateado/gi, 'silver')
+            .replace(/azul/gi, 'blue')
+            .replace(/vermelho/gi, 'red')
+            .replace(/verde/gi, 'green')
+            .replace(/amarelo/gi, 'yellow')
+            .replace(/vermelho/gi, 'red')
+            .replace(/verde/gi, 'green')
+            .replace(/amarelo/gi, 'yellow');
+
+        optimized += `CHARACTERS: ${charEN.substring(0, 800)}. `;
+    }
+
+    // Quality constraints
+    optimized += 'NO deformities, NO extra limbs, correct anatomy. ';
 
     // Emotion
     optimized += `Emotion: ${emotionEN}. `;
 
     // Style (concise)
-    optimized += '3D Pixar style, cinematic lighting, vibrant colors, high quality render.';
+    optimized += '3D Pixar style, cinematic lighting, vibrant colors, high quality render, no watermarks, no logos, aspect ratio 16:9 wide shot. ';
 
     // Final cleanup
     optimized = optimized.replace(/\s+/g, ' ').trim();
@@ -221,6 +233,12 @@ export async function generateImageWithNanoBanana(prompt: string): Promise<strin
 
         const result = await genAI.models.generateContent({
             model,
+            config: {
+                responseModalities: ['IMAGE'],
+                imageConfig: {
+                    aspectRatio: '16:9'
+                }
+            },
             contents: [{
                 role: 'user',
                 parts: [{
@@ -300,112 +318,140 @@ export async function generateImageWithReferences(
     const optimizedPrompt = translateAndCompactPrompt(prompt);
 
     // Add EXPLICIT consistency AND child-friendly instructions
-    const enhancedPrompt = `CRITICAL STYLE REQUIREMENTS:
-1. CHILD-FRIENDLY: Cute, adorable, BIG expressive eyes (Pixar/DreamWorks style), soft rounded features, friendly appearance
-2. NO realistic/adult features - must be cartoon-style, appealing to children ages 3-8
-3. EXACT CONSISTENCY: Use IDENTICAL colors, proportions, features from reference images
-4. Maintain playful, innocent, non-threatening character design
+    const enhancedPrompt = `SCENE ACTION (PRIORITY 1): ${optimizedPrompt}
 
-SCENE: ${optimizedPrompt}`;
+CRITICAL STYLE REQUIREMENTS (High Priority):
+1. CHILD-FRIENDLY: Cute, adorable, BIG expressive eyes (Pixar/DreamWorks style), soft rounded features, friendly appearance
+2. EXACT CONSISTENCY: Use IDENTICAL colors, proportions, and features from the provided reference images
+3. NO realistic/adult features - must be cartoon-style, appealing to children ages 3-8
+4. Maintain playful, innocent, non-threatening character design`;
 
     console.log('[Gemini 3 Pro Image] Generating with', referenceImages.length, 'reference images');
     console.log('[Gemini 3 Pro Image] Enhanced prompt:', enhancedPrompt);
 
-    try {
-        const genAI = new GoogleGenAI({ apiKey });
+    const maxRetries = 5;
+    let attempt = 0;
 
-        // Build contents array: prompt + reference images
-        const contents: any[] = [
-            { text: enhancedPrompt }
-        ];
+    while (attempt < maxRetries) {
+        try {
+            const genAI = new GoogleGenAI({ apiKey });
+            // ... (rest of the logic)
 
-        // Add reference images with CONDITIONAL duplication
-        // Protagonists: 1x (already have good consistency)
-        // Supporting: 2x (need extra emphasis)
-        for (let i = 0; i < referenceImages.length; i++) {
-            const refImage = referenceImages[i];
-            const status = characterStatuses?.[i] || 'supporting'; // Default to supporting for safety
 
-            // Extract base64 data from data URL
-            const base64Match = refImage.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/);
 
-            if (base64Match) {
-                const mimeType = `image/${base64Match[1]}`;
-                const base64Data = base64Match[2];
+            // Build contents array: prompt + reference images
+            const contents: any[] = [
+                { text: enhancedPrompt }
+            ];
 
-                const imageData = {
-                    inlineData: {
-                        mimeType,
-                        data: base64Data
+            // Add reference images with CONDITIONAL duplication
+            // Protagonists: 1x (already have good consistency)
+            // Supporting: 2x (need extra emphasis)
+            for (let i = 0; i < referenceImages.length; i++) {
+                const refImage = referenceImages[i];
+                const status = characterStatuses?.[i] || 'supporting'; // Default to supporting for safety
+
+                // Extract base64 data from data URL
+                const base64Match = refImage.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/);
+
+                if (base64Match) {
+                    const mimeType = `image/${base64Match[1]}`;
+                    const base64Data = base64Match[2];
+
+                    const imageData = {
+                        inlineData: {
+                            mimeType,
+                            data: base64Data
+                        }
+                    };
+
+                    // Conditional duplication based on character importance
+                    if (status === 'protagonist') {
+                        // Protagonist: Add once (already consistent)
+                        contents.push(imageData);
+                        console.log('[Gemini 3 Pro Image] Added PROTAGONIST reference (1x weight)');
+                    } else {
+                        // Supporting: Add twice (needs more emphasis)
+                        contents.push(imageData);
+                        contents.push(imageData);
+                        console.log('[Gemini 3 Pro Image] Added SUPPORTING reference (2x weight)');
                     }
-                };
-
-                // Conditional duplication based on character importance
-                if (status === 'protagonist') {
-                    // Protagonist: Add once (already consistent)
-                    contents.push(imageData);
-                    console.log('[Gemini 3 Pro Image] Added PROTAGONIST reference (1x weight)');
                 } else {
-                    // Supporting: Add twice (needs more emphasis)
-                    contents.push(imageData);
-                    contents.push(imageData);
-                    console.log('[Gemini 3 Pro Image] Added SUPPORTING reference (2x weight)');
-                }
-            } else {
-                console.warn('[Gemini 3 Pro Image] Invalid reference image format, skipping');
-            }
-        }
-
-        console.log('[Gemini 3 Pro Image] Total content items:', contents.length, '(1 prompt +', (contents.length - 1), 'reference images)');
-
-        // Use Gemini 3 Pro Image Preview model
-        const model = 'gemini-3-pro-image-preview';
-
-        const result = await genAI.models.generateContent({
-            model,
-            contents: contents,
-            config: {
-                responseModalities: ['IMAGE'],
-                imageConfig: {
-                    aspectRatio: '16:9',
-                    imageSize: '2K'
+                    console.warn('[Gemini 3 Pro Image] Invalid reference image format, skipping');
                 }
             }
-        });
 
-        console.log('[Gemini 3 Pro Image] Generation complete');
+            console.log(`[Gemini 3 Pro Image] Attempt ${attempt + 1}/${maxRetries}. Total content items:`, contents.length);
 
-        // Extract image from response
-        if (result.candidates && result.candidates.length > 0) {
-            const candidate = result.candidates[0];
+            // Use Gemini 3 Pro Image Preview model
+            const model = 'gemini-3-pro-image-preview';
 
-            if (candidate.content && candidate.content.parts) {
-                for (const part of candidate.content.parts) {
-                    if (part.inlineData && part.inlineData.data) {
-                        const mimeType = part.inlineData.mimeType || 'image/png';
-                        const base64Data = part.inlineData.data;
-                        const dataUrl = `data:${mimeType};base64,${base64Data}`;
-
-                        console.log('[Gemini 3 Pro Image] Image generated with ENHANCED child-friendly consistency');
-                        return dataUrl;
+            const result = await genAI.models.generateContent({
+                model,
+                contents: contents,
+                config: {
+                    responseModalities: ['IMAGE'],
+                    imageConfig: {
+                        aspectRatio: '16:9'
                     }
+                }
+            });
 
-                    if (part.fileData && part.fileData.fileUri) {
-                        console.log('[Gemini 3 Pro Image] Image generated with file URI:', part.fileData.fileUri);
-                        return part.fileData.fileUri;
+            console.log('[Gemini 3 Pro Image] Generation complete');
+
+            // Extract image from response
+            if (result.candidates && result.candidates.length > 0) {
+                const candidate = result.candidates[0];
+
+                if (candidate.content && candidate.content.parts) {
+                    for (const part of candidate.content.parts) {
+                        if (part.inlineData && part.inlineData.data) {
+                            const mimeType = part.inlineData.mimeType || 'image/png';
+                            const base64Data = part.inlineData.data;
+                            const dataUrl = `data:${mimeType};base64,${base64Data}`;
+
+                            console.log('[Gemini 3 Pro Image] Image generated with ENHANCED child-friendly consistency');
+                            return dataUrl;
+                        }
+
+                        if (part.fileData && part.fileData.fileUri) {
+                            console.log('[Gemini 3 Pro Image] Image generated with file URI:', part.fileData.fileUri);
+                            return part.fileData.fileUri;
+                        }
                     }
                 }
             }
+
+            console.error('[Gemini 3 Pro Image] No image data found in response');
+            throw new Error('Gemini 3 Pro Image não retornou uma imagem.');
+
+        } catch (error: any) {
+            console.error(`[Gemini 3 Pro Image] Error (Attempt ${attempt + 1}):`, error);
+
+            // Handle 503 Overloaded error - check multiple patterns
+            const errorStr = JSON.stringify(error) || error.message || '';
+            const is503 =
+                errorStr.includes('503') ||
+                errorStr.includes('overloaded') ||
+                errorStr.includes('UNAVAILABLE') ||
+                errorStr.includes('try again later') ||
+                error.code === 503 ||
+                error.status === 'UNAVAILABLE';
+
+            if (is503) {
+                attempt++;
+                if (attempt < maxRetries) {
+                    const delay = 3000 * Math.pow(1.5, attempt); // Exponential backoff: 4.5s, 6.7s, 10s, 15s
+                    console.log(`[Gemini 3 Pro Image] Model overloaded (503). Retrying in ${Math.round(delay / 1000)}s... (Attempt ${attempt + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue; // Retry loop
+                }
+            }
+
+            // If max retries reached or other error, throw
+            throw new Error(`Falha na geração com referências: ${error.message}. Tente novamente.`);
         }
-
-        console.error('[Gemini 3 Pro Image] No image data found in response');
-        throw new Error('Gemini 3 Pro Image não retornou uma imagem.');
-
-    } catch (error: any) {
-        console.error('[Gemini 3 Pro Image] Error:', error);
-
-        // Fallback to standard generation if 3 Pro fails
-        console.warn('[Gemini 3 Pro Image] Falling back to standard generation without references');
-        return generateImageWithNanoBanana(prompt);
     }
+
+    throw new Error('Falha na geração após múltiplas tentativas.');
 }

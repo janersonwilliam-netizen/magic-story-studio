@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignUpPage } from './components/auth/SignUpPage';
 import { Dashboard } from './components/Dashboard';
+import { FilesPage } from './components/FilesPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { StudioIndex } from './components/Studio';
 
@@ -14,6 +15,14 @@ export default function App() {
                 <Routes>
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/signup" element={<SignUpPage />} />
+                    <Route
+                        path="/files"
+                        element={
+                            <ProtectedRoute>
+                                <FilesPage />
+                            </ProtectedRoute>
+                        }
+                    />
                     <Route
                         path="/dashboard"
                         element={

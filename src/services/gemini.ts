@@ -13,6 +13,7 @@ export interface GenerateStoryParams {
     age_group: string;
     tone: string;
     duration: number;
+    storyIdea?: string;
 }
 
 export interface GenerateStoryResponse {
@@ -128,6 +129,12 @@ ESTILO DE ESCRITA:
     const minWords = params.duration * 150;
     const maxWords = params.duration * 200;
 
+    // Add Story Idea if provided
+    let ideaPrompt = '';
+    if (params.storyIdea && params.storyIdea.trim()) {
+        ideaPrompt = `\nIDEIA/ENREDO DO USUÁRIO (Obrigatório seguir): "${params.storyIdea.trim()}"\n`;
+    }
+
     const prompt = `${systemInstructions}
 
 Crie uma história infantil com as seguintes características:
@@ -136,7 +143,7 @@ TÍTULO: ${params.title}
 FAIXA ETÁRIA: ${params.age_group} anos
 TOM: ${params.tone}
 DURAÇÃO DE LEITURA: aproximadamente ${params.duration} minutos
-
+${ideaPrompt}
 REQUISITOS ESPECÍFICOS POR FAIXA ETÁRIA:
 ${ageRequirements}
 
@@ -150,23 +157,53 @@ Lembre-se: esta história será narrada em vídeo para YouTube, então use descr
 
 IMPORTANTE: Retorne APENAS o texto da história, sem nenhum texto adicional, explicação ou formatação markdown.`;
 
-    try {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const story_text = response.text().trim();
+    // Retry logic for 503 errors
+    const maxRetries = 5;
+    let attempt = 0;
 
-        // For now, narration_text is the same as story_text
-        // In the future, we can add a second call to adjust for narration
-        const narration_text = story_text;
+    while (attempt < maxRetries) {
+        try {
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const story_text = response.text().trim();
 
-        return {
-            story_text,
-            narration_text,
-        };
-    } catch (error: any) {
-        console.error('Error generating story with Gemini:', error);
-        throw new Error(`Failed to generate story: ${error.message}`);
+            // For now, narration_text is the same as story_text
+            // In the future, we can add a second call to adjust for narration
+            const narration_text = story_text;
+
+            return {
+                story_text,
+                narration_text,
+            };
+        } catch (error: any) {
+            console.error(`[Gemini Story] Error (Attempt ${attempt + 1}/${maxRetries}):`, error);
+
+            // Check for 503/overloaded errors
+            const errorStr = JSON.stringify(error) || error.message || '';
+            const is503 =
+                errorStr.includes('503') ||
+                errorStr.includes('overloaded') ||
+                errorStr.includes('UNAVAILABLE') ||
+                errorStr.includes('try again later') ||
+                error.code === 503 ||
+                error.status === 'UNAVAILABLE';
+
+            if (is503) {
+                attempt++;
+                if (attempt < maxRetries) {
+                    const delay = 3000 * Math.pow(1.5, attempt); // Exponential backoff
+                    console.log(`[Gemini Story] Model overloaded (503). Retrying in ${Math.round(delay / 1000)}s... (Attempt ${attempt + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+            }
+
+            // If max retries reached or other error, throw
+            throw new Error(`Failed to generate story: ${error.message}`);
+        }
     }
+
+    throw new Error('Failed to generate story after multiple attempts.');
 }
 
 export async function extractCharactersFromStory(storyText: string): Promise<Record<string, string>> {
@@ -276,6 +313,8 @@ Retorne APENAS o JSON válido, sem markdown ou explicações.`;
 export interface GenerateScenesParams {
     narration_text: string;
     duration: number;
+    targetSceneCount?: number;
+    title?: string;
 }
 
 export interface Scene {
@@ -304,26 +343,57 @@ export async function generateScenesWithGemini(
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+    // Logic for Intro/Outro injection
+    // If we have a target count (e.g. 10), we want 1 Intro + (10-2) Story + 1 Outro
+    const hasIntroOutro = !!params.title && !!params.targetSceneCount;
+    const storySceneCount = hasIntroOutro && params.targetSceneCount ? params.targetSceneCount - 2 : undefined;
+
     // Calculate scene count constraints
     let minScenes = 6;
     let maxScenes = 8;
-    if (params.duration >= 5) {
-        minScenes = 8;
-        maxScenes = 12;
+
+    if (storySceneCount) {
+        // Use the adjusted count for the story body
+        minScenes = storySceneCount;
+        maxScenes = storySceneCount;
+        console.log(`[Gemini Scenes] Generating ${storySceneCount} story scenes (Total target: ${params.targetSceneCount})`);
+    } else if (params.targetSceneCount) {
+        minScenes = params.targetSceneCount;
+        maxScenes = params.targetSceneCount;
+        console.log(`[Gemini Scenes] Using strict scene count target: ${params.targetSceneCount}`);
+    } else {
+        // Fallback to duration-based heuristics if no explicit count
+        if (params.duration >= 5) {
+            minScenes = 8;
+            maxScenes = 12;
+        }
+        if (params.duration >= 10) {
+            minScenes = 12;
+            maxScenes = 15;
+        }
     }
-    if (params.duration >= 10) {
-        minScenes = 12;
-        maxScenes = 15;
-    }
+
+    // Calculate target duration per scene
+    const totalSeconds = params.duration * 60;
+    // If intro/outro, we reserve ~20s for them (~10s each)
+    const storySeconds = hasIntroOutro ? totalSeconds - 20 : totalSeconds;
+    const targetAvgDuration = Math.round(storySeconds / ((minScenes + maxScenes) / 2));
 
     const prompt = `Você é um especialista em roteirização de vídeos infantis para YouTube.
 
 Sua missão é dividir histórias infantis em cenas visuais, criando um roteiro estruturado e pronto para produção de vídeo.
 
+REGRAS CRÍTICAS DE FIDELIDADE (IMPORTANTE):
+1. A história DEVE ser contada EXATAMENTE como está no texto.
+2. NÃO invente diálogos, eventos ou ações que não existam na narração.
+3. Se a narração não diz algo, NÃO coloque na descrição visual.
+4. O objetivo é sincronizar perfeitamente o áudio da narração com o vídeo.
+
 REGRAS DE SEPARAÇÃO:
-1. DURAÇÃO DAS CENAS:
-   - Cada cena deve ter entre 10 e 30 segundos
-   - Distribua o tempo total de forma equilibrada
+1. QUANTIDADE DE CENAS:
+   - Você DEVE gerar EXATAMENTE ${minScenes} cenas (ou muito próximo disso).
+   - O tempo total do vídeo é ${params.duration} minutos (${totalSeconds} segundos).
+   - Duração média por cena alvo: ~${targetAvgDuration} segundos.
 
 2. CONTINUIDADE VISUAL:
    - Cada cena deve ter uma composição visual clara
@@ -334,7 +404,12 @@ REGRAS DE SEPARAÇÃO:
    - Inclua cenário, personagens, ações, atmosfera
    - Pense em composição de quadro (16:9)
 
-4. EMOÇÕES:
+4. MANIPULAÇÃO DO ENCERRAMENTO (CRÍTICO):
+   - Se o texto contiver uma "Chamada para Ação" ou despedida (ex: "Se gostou, inscreva-se", "Tchau tchau"), ela DEVE aparecer APENAS na ÚLTIMA CENA.
+   - NUNCA inclua esse texto de encerramento na penúltima cena ou misturado com a moral da história.
+   - A última cena deve ser EXCLUSIVA para o encerramento.
+
+5. EMOÇÕES:
    - Identifique a emoção principal
    - Use APENAS uma destas opções EXATAS: alegre, calma, aventura, surpresa, medo, tristeza, curiosidade
    - NÃO use variações ou traduções (ex: "happy", "joyful", "feliz" são INVÁLIDOS)
@@ -353,8 +428,8 @@ ${params.narration_text}
 DURAÇÃO TOTAL: ${params.duration} minutos
 
 INSTRUÇÕES:
-1. Crie entre ${minScenes} e ${maxScenes} cenas
-2. Cada cena deve ter 10-30 segundos
+1. Crie EXATAMENTE ${minScenes} cenas.
+2. Distribua o texto da narração entre as cenas de forma que faça sentido visualmente.
 3. Retorne APENAS um JSON válido
 4. IMPORTANTE: Retorne APENAS O JSON, SEM blocos de código markdown (sem \`\`\`json ou \`\`\`). Comece diretamente com { e termine com }.
 
@@ -365,10 +440,10 @@ Retorne um JSON válido com a seguinte estrutura:
   "scenes": [
     {
       "order": 1,
-      "narration_text": "Texto da narração para esta cena",
+      "narration_text": "Trecho exato do texto correspondente a esta cena...",
       "visual_description": "Plano Médio. Luz brilhante. Descrição detalhada da composição...",
       "emotion": "alegre",
-      "duration_estimate": 15,
+      "duration_estimate": ${targetAvgDuration},
       "characters": ["personagem1", "personagem2"]
     }
   ]
@@ -381,9 +456,6 @@ NÃO use outras palavras ou traduções.`;
         const result = await model.generateContent(prompt);
         const response = await result.response;
         let text = response.text().trim();
-
-        console.log('[Gemini Scenes] Raw response length:', text.length);
-        console.log('[Gemini Scenes] First 200 chars:', text.substring(0, 200));
 
         // Step 1: Remove markdown code blocks
         text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
@@ -400,101 +472,159 @@ NÃO use outras palavras ou traduções.`;
         let depth = 0;
         let inString = false;
         let escapeNext = false;
+        let jsonEnd = text.length;
 
         for (let i = 0; i < text.length; i++) {
             const char = text[i];
-
-            if (escapeNext) {
-                escapeNext = false;
-                continue;
-            }
-
-            if (char === '\\') {
-                escapeNext = true;
-                continue;
-            }
-
-            if (char === '"' && !escapeNext) {
-                inString = !inString;
-            }
-
+            if (escapeNext) { escapeNext = false; continue; }
+            if (char === '\\') { escapeNext = true; continue; }
+            if (char === '"' && !escapeNext) { inString = !inString; }
             if (!inString) {
                 if (char === '{') depth++;
                 if (char === '}') {
                     depth--;
                     if (depth === 0) {
-                        text = text.substring(0, i + 1);
+                        jsonEnd = i + 1;
                         break;
                     }
                 }
             }
         }
 
-        console.log('[Gemini Scenes] Extracted JSON length:', text.length);
+        text = text.substring(0, jsonEnd);
 
-        // Step 3: Fix common JSON issues in Portuguese text
-        // This is a more aggressive approach to fix unescaped quotes
-        const fixedText = text.replace(
-            /"([^"]*?)"/g,
-            (match, content) => {
-                // Skip if this is a JSON key or simple value
-                if (!content.includes('"')) {
-                    return match;
-                }
+        // Parse JSON
+        let data: { scenes: any[] };
 
-                // This string contains quotes - we need to escape them
-                // But be careful not to double-escape
-                const fixed = content.replace(/\\"/g, '___ESCAPED_QUOTE___')
-                    .replace(/"/g, '\\"')
-                    .replace(/___ESCAPED_QUOTE___/g, '\\"');
-                return `"${fixed}"`;
-            }
-        );
-
-        console.log('[Gemini Scenes] Applied quote fixing');
-
-        // Step 4: Try to parse
-        let data;
         try {
-            data = JSON.parse(fixedText);
-            console.log('[Gemini Scenes] Successfully parsed JSON');
-        } catch (parseError: any) {
-            console.error('[Gemini Scenes] JSON parse error:', parseError.message);
-
-            // Show a snippet around the error location if available
-            const errorMatch = parseError.message.match(/position (\d+)/);
-            if (errorMatch) {
-                const pos = parseInt(errorMatch[1]);
-                const start = Math.max(0, pos - 50);
-                const end = Math.min(fixedText.length, pos + 50);
-                console.error('[Gemini Scenes] Error context:', fixedText.substring(start, end));
-            } else {
-                console.error('[Gemini Scenes] First 500 chars:', fixedText.substring(0, 500));
-            }
-
-            // Fallback: Try to extract just the scenes array
-            const scenesMatch = fixedText.match(/"scenes"\s*:\s*(\[[\s\S]*\])/);
-            if (scenesMatch) {
-                console.log('[Gemini Scenes] Attempting fallback: extract scenes array...');
-                try {
-                    const scenes = JSON.parse(scenesMatch[1]);
-                    data = { scenes };
-                    console.log('[Gemini Scenes] Fallback successful');
-                } catch (fallbackError: any) {
-                    throw new Error(`JSON parsing failed: ${parseError.message}. Please try again.`);
+            data = JSON.parse(text);
+        } catch (e) {
+            console.warn('[Gemini] JSON parse failed, attempting regex fixes...');
+            const fixedText = text.replace(
+                /"([^"]*?)"/g,
+                (match, content) => {
+                    if (!content.includes('"')) return match;
+                    return match.replace(/\\"/g, '___ESCAPED_QUOTE___')
+                        .replace(/"/g, '\\"')
+                        .replace(/___ESCAPED_QUOTE___/g, '\\"');
                 }
-            } else {
-                throw new Error(`JSON parsing failed: ${parseError.message}. Please try again.`);
+            );
+
+            try {
+                data = JSON.parse(fixedText);
+            } catch (e2) {
+                console.error('[Gemini] JSON parse still failed, trying regex extraction...');
+                const match = text.match(/"scenes"\s*:\s*(\[[\s\S]*\])/);
+                if (match) {
+                    data = { scenes: JSON.parse(match[1]) };
+                } else {
+                    throw new Error('Could not parse scenes JSON');
+                }
             }
         }
 
-        // Validate the structure
+        const scenes = data.scenes || [];
+
+        // --- POST-PROCESSING: DEDUPLICATE SCENES ---
+
+        // 1. DEDUPLICATE INTRO (Title Card)
+        // If we are injecting a Title Card, we don't want the AI to generate text for the intro hook "Hoje eu vou contar..."
+        // because that results in two Title Cards.
+        if (hasIntroOutro && scenes.length > 0) {
+            const firstScene = scenes[0];
+            const text = firstScene.narration_text ? firstScene.narration_text.toLowerCase().trim() : '';
+
+            // Check for standard intro hook
+            const isIntroHook = text.includes('hoje eu vou contar') || text.includes('hoje vou contar');
+
+            if (isIntroHook) {
+                console.log('[Gemini] Detected AI-generated Intro Scene (Hook). Removing it in favor of Injected Title Card.');
+                scenes.shift(); // Remove the first element
+            }
+        }
+
+        // --- POST-PROCESSING: DEDUPLICATE ENDING ---
+        // 1. Remove duplicate adjacent scenes (classic double generation)
+        if (scenes.length >= 2) {
+            const last = scenes[scenes.length - 1];
+            const secondLast = scenes[scenes.length - 2];
+            const t1 = last.narration_text ? last.narration_text.toLowerCase().trim() : '';
+            const t2 = secondLast.narration_text ? secondLast.narration_text.toLowerCase().trim() : '';
+
+            if (t1 === t2 && t1.length > 10) {
+                console.log('[Gemini] Duplicate adjacent scenes detected. Removing one.');
+                scenes.pop();
+            }
+        }
+
+        // 2. CRITICAL: Remove AI-generated Outro if we are inserting our own
+        // The AI often follows the prompt instruction to include the "Se você gostou..." text.
+        // We must remove this AI-generated scene because we inject a standardized one later.
+        if (hasIntroOutro && scenes.length > 0) {
+            const lastScene = scenes[scenes.length - 1];
+            const text = lastScene.narration_text ? lastScene.narration_text.toLowerCase().trim() : '';
+
+            // Check against the standard outro text found in the prompt instructions
+            const standardOutroFragment = "se você gostou, já sabe";
+            const isOutro = text.includes(standardOutroFragment) ||
+                (text.includes('tchau') && text.includes('inscreva'));
+
+            if (isOutro) {
+                console.log('[Gemini] Detected AI-generated outro scene. Removing it in favor of Injected Outro.');
+                scenes.pop();
+            }
+        }
+
+        // Re-index orders
+        scenes.forEach((s: any, idx: number) => s.order = idx + 1);
+
+        // Ensure data.scenes is updated for the next steps
+        data.scenes = scenes;
+
         if (!data.scenes || !Array.isArray(data.scenes)) {
             throw new Error('Invalid response structure: missing scenes array');
         }
 
-        console.log('[Gemini Scenes] Generated', data.scenes.length, 'scenes');
-        return data;
+        let finalScenes: Scene[] = data.scenes;
+
+        // INJECT INTRO AND OUTRO IF APPLICABLE
+        if (hasIntroOutro) {
+            console.log('[Gemini Scenes] Injecting Intro and Outro scenes...');
+
+            // INTRO SCENE
+            const introScene: Scene = {
+                order: 0, // Will be re-indexed
+                narration_text: `Hoje eu vou contar uma historinha super doce e cheia de aventura! É a história "${params.title}"!`,
+                visual_description: `TITLE CARD: "${params.title}". Disney/Pixar 3D style title text. The main character posing happily next to the text. Magical, vibrant, high quality render.`,
+                emotion: 'alegre',
+                duration_estimate: 6,
+                characters: ['__PROTAGONIST__'], // Special marker to be replaced by actual protagonist in UI
+                image_prompt: `Title card text "${params.title}" in 3D Disney/Pixar animation style, big colorful letters, with the main character posing happily, magical background with sparkles, high quality 8k render`
+            };
+
+            // OUTRO SCENE
+            const outroScene: Scene = {
+                order: 0, // Will be re-indexed
+                narration_text: `Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Um beijo grande… e até a próxima história! Tchau, tchau!`,
+                visual_description: `Vibrant ending card asking to Subscribe and Like. Pixar style background.`,
+                emotion: 'alegre',
+                duration_estimate: 8,
+                characters: [],
+                image_prompt: 'ENDING_CARD_PLACEHOLDER' // Placeholder logic for FilesPage integration
+            };
+
+            finalScenes = [introScene, ...finalScenes, outroScene];
+
+            // RE-INDEX ORDERS
+            finalScenes = finalScenes.map((scene, idx) => ({
+                ...scene,
+                order: idx + 1
+            }));
+        }
+
+        console.log('[Gemini Scenes] Final Generated', finalScenes.length, 'scenes');
+        return { scenes: finalScenes };
+
     } catch (error: any) {
         console.error('Error generating scenes with Gemini:', error);
         throw new Error(`Failed to generate scenes: ${error.message}`);

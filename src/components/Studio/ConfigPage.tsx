@@ -26,7 +26,9 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
     const [config, setConfig] = useState<StoryConfig>({
         title: '',
         duration: 5,
-        scenePauseDuration: 15,
+        title: '',
+        duration: 5,
+        sceneCount: 20,
         visualStyle: 'Estilo Pixar 3D',
         ageGroup: '3-5',
         tone: 'aventura'
@@ -72,6 +74,22 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                         />
                     </div>
 
+                    {/* Story Idea (Optional) */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            IDEIA DA HISTÓRIA (OPCIONAL)
+                        </label>
+                        <textarea
+                            value={config.storyIdea || ''}
+                            onChange={(e) => setConfig({ ...config, storyIdea: e.target.value })}
+                            placeholder="Ex: Quero uma história sobre um dragão que tinha medo de fogo mas aprendeu a cozinhar..."
+                            className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:border-[#FF0000] focus:ring-2 focus:ring-red-100 outline-none transition-colors text-gray-900 min-h-[100px] resize-none"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                            Se deixar em branco, vou criar algo surpreendente para você!
+                        </p>
+                    </div>
+
                     {/* Duration Slider */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -94,23 +112,23 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                         </div>
                     </div>
 
-                    {/* Average Scene Duration */}
+                    {/* Quantity of Scenes */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-3">
-                            DURAÇÃO MÉDIA DAS CENAS
+                            QUANTIDADE DE CENAS
                         </label>
                         <div className="grid grid-cols-3 gap-3">
-                            {[10, 15, 20].map((seconds) => (
+                            {[15, 20, 25].map((count) => (
                                 <button
-                                    key={seconds}
+                                    key={count}
                                     type="button"
-                                    onClick={() => setConfig({ ...config, scenePauseDuration: seconds })}
-                                    className={`py-3 px-4 rounded-xl font-semibold transition-all ${config.scenePauseDuration === seconds
+                                    onClick={() => setConfig({ ...config, sceneCount: count })}
+                                    className={`py-3 px-4 rounded-xl font-semibold transition-all ${config.sceneCount === count
                                         ? 'bg-[#FF0000] text-white shadow-lg scale-105'
                                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                         }`}
                                 >
-                                    {seconds}s
+                                    {count} cenas
                                 </button>
                             ))}
                         </div>

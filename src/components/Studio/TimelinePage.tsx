@@ -13,6 +13,27 @@ interface TimelinePageProps {
 }
 
 export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePageProps) {
+    // SAFETY CHECK: Ensure scenes exist before proceeding
+    if (!storyWithScenes?.scenes || storyWithScenes.scenes.length === 0) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
+                <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-3xl">⚠️</span>
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Erro</h2>
+                    <p className="text-gray-600 mb-6">Nenhuma cena encontrada. Volte e regenere as cenas.</p>
+                    <button
+                        onClick={onBack}
+                        className="px-6 py-3 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                        ← Voltar
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     const [loading, setLoading] = useState(true);
     const [generatingAudio, setGeneratingAudio] = useState(false);
     const [audioProgress, setAudioProgress] = useState(0);
@@ -22,6 +43,8 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
     const [totalDuration, setTotalDuration] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+    const [galleryTab, setGalleryTab] = useState<'media' | 'audio' | 'effects'>('media');
+    const [timelineZoom, setTimelineZoom] = useState(50);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -86,19 +109,18 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
             const sceneId = scene.id;
             const audioUrl = urls[sceneId];
 
-            // Estimate audio duration (will be updated when audio loads)
-            // For now, use a rough estimate based on text length
-            const estimatedAudioDuration = Math.max(3, scene.narrationText.length / 15); // ~15 chars per second
-            const sceneDuration = storyWithScenes.scenePauseDuration || 15; // Average scene duration
-            const totalSceneDuration = sceneDuration; // Use the configured average scene duration
+            // Calculate duration based on text length (audio duration)
+            // This ensures video matches audio - no gaps!
+            const audioDuration = Math.max(3, scene.narrationText.length / 15); // ~15 chars per second
+            const clipDuration = audioDuration + 1; // Add 1s buffer for smooth transitions
 
-            // Create video clip (image)
+            // Create video clip (image) - duration matches audio!
             newClips.push({
                 id: `video-${sceneId}`,
                 type: 'video',
                 track: 1, // Video track
                 startTime: currentStartTime,
-                duration: totalSceneDuration,
+                duration: clipDuration, // FIXED: Now matches audio duration
                 sceneId,
                 imageUrl: scene.imageUrl
             });
@@ -110,7 +132,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                     type: 'audio',
                     track: 2, // Sound track
                     startTime: currentStartTime,
-                    duration: estimatedAudioDuration,
+                    duration: audioDuration, // Use actual audio duration
                     sceneId,
                     audioUrl
                 });
@@ -122,12 +144,12 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                 type: 'caption',
                 track: 0, // Caption track
                 startTime: currentStartTime,
-                duration: estimatedAudioDuration,
+                duration: audioDuration, // Same as audio
                 sceneId,
                 text: scene.narrationText
             });
 
-            currentStartTime += totalSceneDuration;
+            currentStartTime += clipDuration; // Move to next clip position (contiguous!)
         });
 
         setClips(newClips);
@@ -245,54 +267,130 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="p-6 space-y-4">
+            {/* Main Content - Contained Layout - Dark Theme */}
+            <div className="flex-1 p-4 overflow-hidden flex flex-col bg-gray-900" style={{ maxHeight: 'calc(100vh - 140px)' }}>
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="space-y-4"
+                    className="flex flex-col flex-1 gap-3 overflow-hidden"
                 >
-                    {/* Video Preview - Larger and prominent */}
-                    <div className="bg-white rounded-xl shadow-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <h2 className="text-lg font-bold text-gray-900">Preview</h2>
-                            <div className="text-sm text-gray-600">
-                                {storyWithScenes.scenes.length} cenas • {Math.round(totalDuration)}s
+                    {/* Top Row: Gallery (LEFT) + Preview (RIGHT) - Compact */}
+                    <div className="flex gap-3" style={{ height: '25%' }}>
+                        {/* Media Gallery - CapCut Style */}
+                        <div className="w-72 bg-gray-900 rounded-xl shadow-lg flex flex-col overflow-hidden">
+                            {/* Tabs */}
+                            <div className="flex border-b border-gray-700">
+                                <button onClick={() => setGalleryTab('media')} className={`flex-1 px-2 py-2 text-xs font-medium ${galleryTab === 'media' ? 'text-white bg-gray-800 border-b-2 border-red-500' : 'text-gray-400 hover:text-white'}`}>
+                                    📷 Mídia
+                                </button>
+                                <button onClick={() => setGalleryTab('audio')} className={`flex-1 px-2 py-2 text-xs font-medium ${galleryTab === 'audio' ? 'text-white bg-gray-800 border-b-2 border-green-500' : 'text-gray-400 hover:text-white'}`}>
+                                    🎵 Áudio
+                                </button>
+                                <button onClick={() => setGalleryTab('effects')} className={`flex-1 px-2 py-2 text-xs font-medium ${galleryTab === 'effects' ? 'text-white bg-gray-800 border-b-2 border-purple-500' : 'text-gray-400 hover:text-white'}`}>
+                                    ✨ Efeitos
+                                </button>
+                            </div>
+
+                            {/* Tab Content */}
+                            <div className="flex-1 overflow-y-auto p-2 min-h-0">
+                                {galleryTab === 'media' && (
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {storyWithScenes.scenes.map((scene, idx) => (
+                                            <div key={scene.id} draggable onDragStart={(e) => { e.dataTransfer.setData('mediaType', 'video'); e.dataTransfer.setData('sceneId', scene.id); }} className="aspect-video bg-gray-700 rounded overflow-hidden cursor-grab hover:ring-2 ring-blue-400 group relative">
+                                                {scene.imageUrl ? <img src={scene.imageUrl} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">{idx + 1}</div>}
+                                                <div className="absolute inset-x-0 bottom-0 bg-black/60 text-[8px] text-white px-1 py-0.5 opacity-0 group-hover:opacity-100">Cena {idx + 1}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {galleryTab === 'audio' && (
+                                    <div className="space-y-1.5">
+                                        {Object.entries(audioUrls).map(([sceneId, url], idx) => (
+                                            <div key={sceneId} draggable onDragStart={(e) => { e.dataTransfer.setData('mediaType', 'audio'); e.dataTransfer.setData('sceneId', sceneId); }} className="flex items-center gap-2 p-2 bg-gray-800 rounded border border-gray-700 cursor-grab hover:border-green-500 text-xs">
+                                                <div className="w-7 h-7 bg-green-600 rounded flex items-center justify-center text-sm">🎵</div>
+                                                <div className="flex-1"><div className="text-white">Áudio {idx + 1}</div><div className="text-gray-500 text-[10px]">Narração</div></div>
+                                            </div>
+                                        ))}
+                                        {Object.keys(audioUrls).length === 0 && <div className="text-gray-500 text-xs text-center py-4">Nenhum áudio</div>}
+                                    </div>
+                                )}
+                                {galleryTab === 'effects' && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {['🌟 Fade In', '✨ Fade Out', '🎬 Transição', '💫 Zoom'].map((fx, i) => (
+                                            <div key={i} className="p-3 bg-gray-800 rounded border border-gray-700 text-center opacity-50">
+                                                <div className="text-xl mb-1">{fx.split(' ')[0]}</div>
+                                                <div className="text-[10px] text-gray-400">{fx.split(' ')[1]}</div>
+                                            </div>
+                                        ))}
+                                        <div className="col-span-2 text-gray-500 text-[10px] text-center">Em breve</div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-2 border-t border-gray-700 text-[10px] text-gray-500 text-center bg-gray-800">Arraste para a timeline</div>
+                        </div>
+
+                        {/* Video Preview - RIGHT - Dark Theme */}
+                        <div className="flex-1 bg-gray-800 rounded-xl shadow-lg p-3 flex flex-col overflow-hidden">
+                            <div className="flex items-center justify-between mb-2">
+                                <h2 className="text-sm font-bold text-white">Preview</h2>
+                                <div className="text-xs text-gray-400">
+                                    {storyWithScenes.scenes.length} cenas • {Math.round(totalDuration)}s
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0">
+                                <VideoPreview
+                                    clips={clips}
+                                    currentTime={currentTime}
+                                    totalDuration={totalDuration}
+                                    isPlaying={isPlaying}
+                                    onTimeUpdate={setCurrentTime}
+                                    onPlayPause={() => setIsPlaying(!isPlaying)}
+                                    onStop={() => {
+                                        setIsPlaying(false);
+                                        setCurrentTime(0);
+                                    }}
+                                />
                             </div>
                         </div>
-                        <VideoPreview
-                            clips={clips}
-                            currentTime={currentTime}
-                            totalDuration={totalDuration}
-                            isPlaying={isPlaying}
-                            onTimeUpdate={setCurrentTime}
-                            onPlayPause={() => setIsPlaying(!isPlaying)}
-                            onStop={() => {
-                                setIsPlaying(false);
-                                setCurrentTime(0);
-                            }}
-                        />
                     </div>
 
-                    {/* Timeline - Compact but visible */}
-                    <div className="bg-white rounded-xl shadow-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <h2 className="text-lg font-bold text-gray-900">Timeline</h2>
-                            <div className="text-xs text-gray-500">
-                                {clips.length} clips
+                    {/* Timeline - Full remaining height */}
+                    <div className="flex-1 bg-gray-800 rounded-xl shadow-lg p-3 flex flex-col overflow-hidden">
+                        <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                            <h2 className="text-sm font-bold text-white">Timeline</h2>
+                            <div className="flex items-center gap-3">
+                                {/* Zoom Controls */}
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setTimelineZoom(prev => Math.max(20, prev - 20))}
+                                        className="w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs flex items-center justify-center"
+                                    >−</button>
+                                    <span className="text-xs text-gray-400 w-10 text-center">{timelineZoom}%</span>
+                                    <button
+                                        onClick={() => setTimelineZoom(prev => Math.min(200, prev + 20))}
+                                        className="w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs flex items-center justify-center"
+                                    >+</button>
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                    {clips.length} clips
+                                </div>
                             </div>
                         </div>
-                        <Timeline
-                            clips={clips}
-                            currentTime={currentTime}
-                            totalDuration={totalDuration}
-                            onTimeUpdate={setCurrentTime}
-                            selectedClipId={selectedClipId}
-                            onClipSelect={setSelectedClipId}
-                        />
+                        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+                            <Timeline
+                                clips={clips}
+                                currentTime={currentTime}
+                                totalDuration={totalDuration}
+                                onTimeUpdate={setCurrentTime}
+                                onClipsChange={setClips}
+                                selectedClipId={selectedClipId}
+                                onClipSelect={setSelectedClipId}
+                            />
+                        </div>
                     </div>
                 </motion.div>
             </div>
         </div>
     );
 }
+
