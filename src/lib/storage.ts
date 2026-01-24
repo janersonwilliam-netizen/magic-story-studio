@@ -12,8 +12,9 @@ export interface StoredFile {
     name: string;
     url: string; // Base64 data
     type: 'image' | 'audio';
-    category: 'ending_card' | 'music' | 'logo';
+    category: 'ending_card' | 'music' | 'logo' | 'thumbnail';
     isDefault: boolean;
+    language?: 'pt' | 'en'; // Default 'pt'
     createdAt: number;
 }
 

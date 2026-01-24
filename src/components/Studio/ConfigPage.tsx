@@ -26,8 +26,6 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
     const [config, setConfig] = useState<StoryConfig>({
         title: '',
         duration: 5,
-        title: '',
-        duration: 5,
         sceneCount: 20,
         visualStyle: 'Estilo Pixar 3D',
         ageGroup: '3-5',
@@ -42,7 +40,7 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
     };
 
     return (
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

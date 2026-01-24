@@ -10,7 +10,8 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 0 100% 50%; /* #FF0000 */
+    --primary: 0 100% 50%;
+    /* #FF0000 */
     --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -27,11 +28,59 @@
   }
 }
 
-  @layer base {
-    * {
-      @apply border-border;
-    }
-    body {
-      @apply bg-background text-foreground;
-    }
+@layer base {
+
+  /* Dark scrollbar for timeline */
+  .timeline-scrollbar::-webkit-scrollbar {
+    height: 12px;
   }
+
+  .timeline-scrollbar::-webkit-scrollbar-track {
+    background: #1a1a1a;
+    border-radius: 6px;
+  }
+
+  .timeline-scrollbar::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 6px;
+    border: 2px solid #1a1a1a;
+  }
+
+  .timeline-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #4B5563;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Force dark background for editor routes */
+  body:has([data-editor-mode="true"]) {
+    background-color: #1a1a1a !important;
+  }
+
+  html {
+    background-color: #0f0f0f;
+  }
+
+  #root {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+}

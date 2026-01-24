@@ -12,24 +12,36 @@ import { Loader2, User, Palette, Shirt, Sparkles } from 'lucide-react';
 
 interface ScenesPageProps {
     story: StoryWithNarration;
+    existingData?: StoryWithScenes; // Pass existing scenes/characters if returning to this step
     onComplete: (storyWithScenes: StoryWithScenes) => void;
     onBack: () => void;
 }
 
-export function ScenesPage({ story, onComplete, onBack }: ScenesPageProps) {
-    const [loading, setLoading] = useState(true);
-    const [scenes, setScenes] = useState<Scene[]>([]);
-    const [characters, setCharacters] = useState<Record<string, CharacterDNA>>({});
+export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPageProps) {
+    const [loading, setLoading] = useState(!existingData); // Don't show loading if we have existing data
+    const [scenes, setScenes] = useState<Scene[]>(existingData?.scenes || []);
+    const [characters, setCharacters] = useState<Record<string, CharacterDNA>>(existingData?.characters || {});
     const [mainCharacter, setMainCharacter] = useState<CharacterDNA | null>(null);
     const [error, setError] = useState('');
 
     // Character reference images states (support multiple characters)
     const [generatingCharacterImages, setGeneratingCharacterImages] = useState<Record<string, boolean>>({});
-    const [characterReferenceImages, setCharacterReferenceImages] = useState<Record<string, string>>({});
+    const [characterReferenceImages, setCharacterReferenceImages] = useState<Record<string, string>>(existingData?.characterReferenceImages || {});
     const [characterImageErrors, setCharacterImageErrors] = useState<Record<string, string>>({});
 
     useEffect(() => {
-        generateScenesAndCharacters();
+        // Only generate if we don't have existing data
+        if (!existingData || existingData.scenes.length === 0) {
+            generateScenesAndCharacters();
+        } else {
+            console.log('[ScenesPage] Using existing scenes and characters');
+            setLoading(false);
+            // Set main character from existing data
+            const charKeys = Object.keys(existingData.characters || {});
+            if (charKeys.length > 0) {
+                setMainCharacter(existingData.characters[charKeys[0]]);
+            }
+        }
     }, []);
 
     const generateScenesAndCharacters = async () => {

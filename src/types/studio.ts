@@ -9,9 +9,6 @@
 export interface StoryConfig {
     title: string;
     duration: number; // minutes (2-10)
-export interface StoryConfig {
-    title: string;
-    duration: number; // minutes (2-10)
     sceneCount: number; // desired number of scenes (15, 20, 25)
     visualStyle: VisualStyle;
     voiceName?: string; // Gemini TTS voice (Kore, Charon, Aoede, Fenrir, Puck)
@@ -99,7 +96,8 @@ export interface TimelineClip {
     imageUrl?: string;
     audioUrl?: string;
     text?: string;
-    track: number; // 0 = caption, 1 = video, 2 = sound, 3 = music
+    track: number; // Legacy: 0 = caption, 1 = video, 2 = sound, 3 = music
+    trackId?: string; // New: Custom track ID for dynamic tracks
 }
 
 /**

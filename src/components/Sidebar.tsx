@@ -1,11 +1,11 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video } from 'lucide-react';
+import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video, FolderOpen } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
-    currentPage: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'studio';
-    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'studio') => void;
+    currentPage: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'studio' | 'files';
+    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'studio' | 'files') => void;
     isOpen: boolean;
 }
 
@@ -16,6 +16,7 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
     const mainItems = [
         { id: 'stories' as const, label: 'Início', icon: Home },
         { id: 'studio' as const, label: 'Studio', icon: Video },
+        { id: 'files' as const, label: 'Biblioteca', icon: FolderOpen },
         { id: 'prompt-master' as const, label: 'Prompt Mestre', icon: Sparkles },
         { id: 'image-test' as const, label: 'Teste de Imagens', icon: TestTube },
     ];

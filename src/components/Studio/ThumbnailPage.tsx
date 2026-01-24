@@ -17,7 +17,8 @@ interface ThumbnailPageProps {
 
 export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: ThumbnailPageProps) {
     const [generating, setGenerating] = useState(false);
-    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    // Initialize with existing thumbnail if available
+    const [imageUrl, setImageUrl] = useState<string | null>(storyWithScenes.thumbnailUrl || null);
     const [error, setError] = useState('');
 
     // Multi-select state for characters
@@ -165,7 +166,7 @@ EMOÇÃO: Happy, Excited.`;
     }
 
     return (
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

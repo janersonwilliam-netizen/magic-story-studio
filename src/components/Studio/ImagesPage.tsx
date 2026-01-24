@@ -30,18 +30,35 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
     const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
 
     useEffect(() => {
-        // Initialize status for all scenes
+        // Initialize status for all scenes - CHECK if images already exist
         const initialStatus: Record<string, ImageGenerationStatus> = {};
+        let hasAllImages = true;
+
         storyWithScenes.scenes.forEach(scene => {
-            initialStatus[scene.id] = {
-                sceneId: scene.id,
-                status: 'pending'
-            };
+            if (scene.imageUrl) {
+                // Scene already has an image - mark as complete
+                initialStatus[scene.id] = {
+                    sceneId: scene.id,
+                    status: 'complete',
+                    imageUrl: scene.imageUrl
+                };
+            } else {
+                // Scene needs image generation
+                initialStatus[scene.id] = {
+                    sceneId: scene.id,
+                    status: 'pending'
+                };
+                hasAllImages = false;
+            }
         });
         setGenerationStatus(initialStatus);
 
-        // Auto-start generation
-        startGeneration();
+        // Only auto-start if there are scenes without images
+        if (!hasAllImages) {
+            startGeneration();
+        } else {
+            console.log('[ImagesPage] All images already exist, skipping generation');
+        }
     }, []);
 
     const startGeneration = async () => {
@@ -55,6 +72,16 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
         for (let i = 0; i < storyWithScenes.scenes.length; i++) {
             const scene = storyWithScenes.scenes[i];
             setCurrentSceneIndex(i);
+
+            // --- SKIP if scene already has an image ---
+            if (scene.imageUrl) {
+                console.log(`[ImagesPage] Scene ${i + 1} already has image, skipping`);
+                setGenerationStatus(prev => ({
+                    ...prev,
+                    [scene.id]: { ...prev[scene.id], status: 'complete', imageUrl: scene.imageUrl }
+                }));
+                continue;
+            }
 
             // Update status to generating
             setGenerationStatus(prev => ({
@@ -269,9 +296,13 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
         }));
 
         try {
-            const characterDescriptions = Object.values(storyWithScenes.characters)
-                .map(char => char.description)
-                .join('\n\n');
+            // Create character descriptions map
+            const characterDescriptions: Record<string, string> = {};
+            if (storyWithScenes.characters) {
+                Object.values(storyWithScenes.characters).forEach(char => {
+                    characterDescriptions[char.name] = char.description;
+                });
+            }
 
             const promptResult = await generateImagePrompt({
                 visual_description: scene.visualDescription,
@@ -435,7 +466,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
     };
 
     return (
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-6xl mx-auto">
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

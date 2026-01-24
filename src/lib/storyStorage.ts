@@ -23,7 +23,7 @@ export interface StoryProject {
 
 const DB_NAME = 'MagicStoryStudio_StoriesDB';
 const STORE_NAME = 'stories';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented to force object store creation
 
 const openDB = (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
@@ -180,8 +180,12 @@ const supabaseStoryStorage = {
 
 export const storyStorage = {
     async isAuthenticated(): Promise<boolean> {
-        const { data } = await supabase.auth.getSession();
-        return !!data.session;
+        try {
+            const { data } = await supabase.auth.getSession();
+            return !!data.session;
+        } catch {
+            return false;
+        }
     },
 
     async getAllStories(): Promise<StoryProject[]> {
@@ -189,36 +193,50 @@ export const storyStorage = {
             try {
                 return await supabaseStoryStorage.getAllStories();
             } catch (err) {
-                console.error('Supabase error, falling back to local?', err);
-                // For now, if cloud fails, we might just error out or return empty
-                // Returning local would be confusing if they expect cloud
-                throw err;
+                console.warn('[storyStorage] Supabase failed, falling back to local storage:', err);
+                // Fallback to local storage if cloud fails
+                return localStoryStorage.getAllStories();
             }
         }
         return localStoryStorage.getAllStories();
     },
 
     async getStory(id: string): Promise<StoryProject | undefined> {
-        // Try specific source based on auth? 
-        // Or try both? If ID exists in one but not other...
-        // Logic: Checks Auth. If logged in, assume Cloud.
         if (await this.isAuthenticated()) {
-            return supabaseStoryStorage.getStory(id);
+            try {
+                return await supabaseStoryStorage.getStory(id);
+            } catch (err) {
+                console.warn('[storyStorage] Supabase failed, falling back to local storage:', err);
+                return localStoryStorage.getStory(id);
+            }
         }
         return localStoryStorage.getStory(id);
     },
 
     async saveStory(story: StoryProject): Promise<void> {
+        // Always save to local first for reliability
+        await localStoryStorage.saveStory(story);
+
         if (await this.isAuthenticated()) {
-            return supabaseStoryStorage.saveStory(story);
+            try {
+                await supabaseStoryStorage.saveStory(story);
+            } catch (err) {
+                console.warn('[storyStorage] Supabase save failed, data saved locally:', err);
+                // Don't throw - local save was successful
+            }
         }
-        return localStoryStorage.saveStory(story);
     },
 
     async deleteStory(id: string): Promise<void> {
+        // Delete from local
+        await localStoryStorage.deleteStory(id);
+
         if (await this.isAuthenticated()) {
-            return supabaseStoryStorage.deleteStory(id);
+            try {
+                await supabaseStoryStorage.deleteStory(id);
+            } catch (err) {
+                console.warn('[storyStorage] Supabase delete failed:', err);
+            }
         }
-        return localStoryStorage.deleteStory(id);
     }
 };

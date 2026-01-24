@@ -4,7 +4,7 @@
  * Manages navigation between CONFIG → NARRATION → SCENES → IMAGES → TIMELINE → EDITOR
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StudioStep, StudioState, StoryConfig, StoryWithNarration, StoryWithScenes } from '../../types/studio';
 import { ConfigPage } from './ConfigPage';
 import { NarrationPage } from './NarrationPage';
@@ -21,9 +21,14 @@ import { storyStorage, StoryProject } from '../../lib/storyStorage';
 import { Loader2 } from 'lucide-react';
 
 export function StudioIndex() {
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
-    const storyId = searchParams.get('id');
+    const storyIdFromUrl = searchParams.get('id');
+    const stepFromUrl = searchParams.get('step') as StudioStep | null;
+
+    // Generate a stable ID on mount if none exists in URL
+    // This ensures the same ID is used throughout the entire story creation process
+    const storyIdRef = useRef<string>(storyIdFromUrl || crypto.randomUUID());
 
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -31,12 +36,48 @@ export function StudioIndex() {
         currentStep: 'CONFIG'
     });
 
-    // Load story on mount if ID exists
-    React.useEffect(() => {
-        if (storyId) {
-            loadStory(storyId);
+    // Sync ref with URL param when it changes (e.g., on navigation)
+    useEffect(() => {
+        if (storyIdFromUrl && storyIdFromUrl !== storyIdRef.current) {
+            storyIdRef.current = storyIdFromUrl;
         }
-    }, [storyId]);
+    }, [storyIdFromUrl]);
+
+    // Update URL immediately if no ID was in URL (new story)
+    useEffect(() => {
+        if (!storyIdFromUrl && storyIdRef.current) {
+            setSearchParams(params => {
+                params.set('id', storyIdRef.current);
+                return params;
+            }, { replace: true });
+        }
+    }, [storyIdFromUrl]);
+
+    // Load story on mount if ID exists in URL
+    useEffect(() => {
+        if (storyIdFromUrl) {
+            loadStory(storyIdFromUrl);
+        }
+    }, [storyIdFromUrl]);
+
+    // Sync URL with current step whenever it changes
+    useEffect(() => {
+        if (studioState.currentStep) {
+            setSearchParams(params => {
+                const currentId = params.get('id') || storyIdRef.current;
+                const currentStepParam = params.get('step');
+
+                // Only update if actually changed to avoid infinite loops
+                if (currentStepParam !== studioState.currentStep) {
+                    const newParams = new URLSearchParams(params);
+                    newParams.set('id', currentId);
+                    newParams.set('step', studioState.currentStep);
+                    return newParams;
+                }
+                return params;
+            }, { replace: true });
+        }
+    }, [studioState.currentStep, setSearchParams]);
 
     const loadStory = async (id: string) => {
         setIsLoading(true);
@@ -47,12 +88,32 @@ export function StudioIndex() {
 
                 // Safety check: ensure data has a valid currentStep
                 const loadedData = story.data;
+                let finalStep = loadedData?.currentStep || 'CONFIG';
+
                 if (!loadedData || !loadedData.currentStep) {
                     console.warn('[Studio] Story data is empty or missing currentStep. Defaulting to CONFIG.');
                     setStudioState({ currentStep: 'CONFIG' });
+                    finalStep = 'CONFIG';
                 } else {
-                    setStudioState(loadedData);
+                    // If a specific step was requested via URL, navigate to it (if valid)
+                    if (stepFromUrl) {
+                        const validSteps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
+                        const requestedStepIndex = validSteps.indexOf(stepFromUrl);
+                        const currentStepIndex = validSteps.indexOf(loadedData.currentStep);
+
+                        // Only allow navigation to steps that have been completed or current
+                        if (requestedStepIndex >= 0 && requestedStepIndex <= currentStepIndex) {
+                            console.log('[Studio] Navigating to requested step:', stepFromUrl);
+                            setStudioState({ ...loadedData, currentStep: stepFromUrl });
+                            finalStep = stepFromUrl;
+                        } else {
+                            setStudioState(loadedData);
+                        }
+                    } else {
+                        setStudioState(loadedData);
+                    }
                 }
+
             }
         } catch (error) {
             console.error('[Studio] Error loading story:', error);
@@ -64,9 +125,10 @@ export function StudioIndex() {
     const saveProgress = async (newState: StudioState) => {
         setIsSaving(true);
         try {
-            // Determine title and ID
+            // Determine title
             const title = newState.config?.title || newState.story?.title || 'Nova História';
-            const currentId = storyId || crypto.randomUUID();
+            // Always use the stable ID from ref (never generate new one here)
+            const currentId = storyIdRef.current;
 
             // Get preview image from Scenes/Thumbnail
             let previewImage: string | undefined;
@@ -86,13 +148,7 @@ export function StudioIndex() {
             };
 
             await storyStorage.saveStory(project);
-            console.log('[Studio] Progress saved for:', title);
-
-            // If it's a new story (no ID in URL), update URL without reloading
-            if (!storyId) {
-                const newUrl = `${window.location.pathname}?id=${currentId}`;
-                window.history.replaceState({ path: newUrl }, '', newUrl);
-            }
+            console.log('[Studio] Progress saved for:', title, 'ID:', currentId);
 
         } catch (error) {
             console.error('[Studio] Error saving progress:', error);
@@ -200,11 +256,81 @@ export function StudioIndex() {
         );
     }
 
-    return (
-        <div className="min-h-screen bg-[#FAFAFA] pb-20">
-            {/* Header with Progress could go here, but let's keep it simple for now */}
+    // Define steps for navigation (Portuguese labels)
+    // Note: TIMELINE step is now shown as "EDITOR" in the UI
+    const allSteps: { key: StudioStep; label: string }[] = [
+        { key: 'CONFIG', label: 'INÍCIO' },
+        { key: 'NARRATION', label: 'NARRAÇÃO' },
+        { key: 'SCENES', label: 'CENAS' },
+        { key: 'THUMBNAIL', label: 'CAPA' },
+        { key: 'IMAGES', label: 'IMAGENS' },
+        { key: 'TIMELINE', label: 'EDITOR' }, // Timeline is the Editor
+    ];
 
-            <main className="container mx-auto px-4 py-8">
+    // Get the index of highest reached step
+    const getStepIndex = (step: StudioStep) => allSteps.findIndex(s => s.key === step);
+    const currentStepIndex = getStepIndex(studioState.currentStep);
+
+    // Determine which steps are accessible (completed or current)
+    const highestReachedStep = studioState.storyWithScenes ?
+        (studioState.storyWithScenes.scenes?.[0]?.imageUrl ? 'IMAGES' :
+            (studioState.storyWithScenes.thumbnailUrl ? 'THUMBNAIL' : 'SCENES')) :
+        (studioState.story ? 'NARRATION' : 'CONFIG');
+    const highestReachedIndex = getStepIndex(highestReachedStep as StudioStep);
+
+    // Check if we should show the step navigation (not in TIMELINE/EDITOR mode)
+    const showStepNavigation = studioState.currentStep !== 'TIMELINE' && studioState.currentStep !== 'EDITOR';
+
+    return (
+        <div className={`min-h-screen ${studioState.currentStep === 'TIMELINE' ? 'bg-[#1a1a1a] overflow-hidden' : 'bg-[#FAFAFA] overflow-auto'} pb-20`}>
+
+            {/* Step Navigation Header - Aligned with content */}
+            {showStepNavigation && (
+                <div className="container mx-auto px-4 pt-6 pb-2">
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-200 px-8 py-4 flex justify-center">
+                        <div className="flex items-center gap-4">
+                            {allSteps.map((step, index) => {
+                                const isActive = step.key === studioState.currentStep;
+                                const isCompleted = index < currentStepIndex || index <= highestReachedIndex;
+                                const isAccessible = index <= Math.max(currentStepIndex, highestReachedIndex);
+
+                                return (
+                                    <button
+                                        key={step.key}
+                                        onClick={() => isAccessible && goToStep(step.key)}
+                                        disabled={!isAccessible}
+                                        className={`flex flex-col items-center px-5 py-2 rounded-xl transition-all ${isActive
+                                            ? 'bg-[#FF0000]/10'
+                                            : isAccessible
+                                                ? 'hover:bg-gray-100 cursor-pointer'
+                                                : 'cursor-not-allowed opacity-50'
+                                            }`}
+                                    >
+                                        {/* Progress bar */}
+                                        <div className={`w-20 h-1 rounded-full mb-2 ${isActive
+                                            ? 'bg-[#FF0000]'
+                                            : isCompleted
+                                                ? 'bg-[#FF0000]'
+                                                : 'bg-gray-300'
+                                            }`} />
+                                        {/* Label */}
+                                        <span className={`text-[11px] font-bold uppercase tracking-wide ${isActive
+                                            ? 'text-[#FF0000]'
+                                            : isCompleted
+                                                ? 'text-[#FF0000]'
+                                                : 'text-gray-400'
+                                            }`}>
+                                            {step.label}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <main className={studioState.currentStep === 'TIMELINE' ? 'w-full h-full p-0 overflow-hidden' : 'container mx-auto px-4 py-8 overflow-auto'}>
                 {studioState.currentStep === 'CONFIG' && (
                     <ConfigPage onComplete={handleConfigComplete} />
                 )}
@@ -212,6 +338,7 @@ export function StudioIndex() {
                 {studioState.currentStep === 'NARRATION' && studioState.config && (
                     <NarrationPage
                         config={studioState.config}
+                        existingStory={studioState.story}
                         onComplete={handleNarrationComplete}
                         onBack={() => goToStep('CONFIG')}
                     />
@@ -220,6 +347,7 @@ export function StudioIndex() {
                 {studioState.currentStep === 'SCENES' && studioState.story && (
                     <ScenesPage
                         story={studioState.story}
+                        existingData={studioState.storyWithScenes}
                         onComplete={handleScenesComplete}
                         onBack={() => goToStep('NARRATION')}
                     />
@@ -250,7 +378,7 @@ export function StudioIndex() {
                 )}
 
                 {studioState.currentStep === 'EDITOR' && (
-                    <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm p-12 text-center">
+                    <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm p-12 text-center">
                         <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Loader2 className="w-8 h-8" />
                         </div>

@@ -13,21 +13,28 @@ import { Loader2, Check, Sparkles, Volume2 } from 'lucide-react';
 
 interface NarrationPageProps {
     config: StoryConfig;
+    existingStory?: StoryWithNarration; // Pass existing story if returning to this step
     onComplete: (story: StoryWithNarration) => void;
     onBack: () => void;
 }
 
-export function NarrationPage({ config, onComplete, onBack }: NarrationPageProps) {
-    const [generating, setGenerating] = useState(false);
-    const [storyText, setStoryText] = useState('');
+export function NarrationPage({ config, existingStory, onComplete, onBack }: NarrationPageProps) {
+    const [generating, setGenerating] = useState(!existingStory?.storyText);
+    const [storyText, setStoryText] = useState(existingStory?.storyText || '');
     const [error, setError] = useState('');
-    const [voiceName, setVoiceName] = useState('Puck');
-    const [emotion, setEmotion] = useState('warmly');
+    const [voiceName, setVoiceName] = useState(existingStory?.voiceName || 'Puck');
+    const [emotion, setEmotion] = useState(existingStory?.emotion || 'warmly');
     const [generatingAudio, setGeneratingAudio] = useState(false);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState('');
 
     useEffect(() => {
-        generateStory();
+        // Only generate if we don't have existing story text
+        if (!existingStory?.storyText) {
+            generateStory();
+        } else {
+            console.log('[NarrationPage] Using existing story text');
+            setGenerating(false);
+        }
     }, []);
 
     const generateStory = async () => {
@@ -83,7 +90,7 @@ export function NarrationPage({ config, onComplete, onBack }: NarrationPageProps
         if (storyText) {
             const storyWithNarration: StoryWithNarration = {
                 ...config,
-                storyId: `story-${Date.now()}`,
+                storyId: existingStory?.storyId || `story-${Date.now()}`,
                 storyText: storyText,
                 narrationText: storyText,
                 voiceName: voiceName,
@@ -94,7 +101,7 @@ export function NarrationPage({ config, onComplete, onBack }: NarrationPageProps
     };
 
     return (
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -190,8 +197,8 @@ export function NarrationPage({ config, onComplete, onBack }: NarrationPageProps
                                             type="button"
                                             onClick={() => setVoiceName(voice.value)}
                                             className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${voiceName === voice.value
-                                                    ? 'bg-[#FF0000] text-white shadow-lg scale-105'
-                                                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                                ? 'bg-[#FF0000] text-white shadow-lg scale-105'
+                                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
                                                 }`}
                                         >
                                             <span className="text-lg">{voice.icon}</span>
@@ -220,8 +227,8 @@ export function NarrationPage({ config, onComplete, onBack }: NarrationPageProps
                                             type="button"
                                             onClick={() => setEmotion(emotionOption.value)}
                                             className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${emotion === emotionOption.value
-                                                    ? 'bg-[#FF0000] text-white shadow-lg scale-105'
-                                                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                                ? 'bg-[#FF0000] text-white shadow-lg scale-105'
+                                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
                                                 }`}
                                         >
                                             <span className="text-lg">{emotionOption.icon}</span>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Upload, Trash2, Music, Image as ImageIcon, Star, Loader2 } from 'lucide-react';
+import { ArrowLeft, Upload, Trash2, Music, Image as ImageIcon, Star, Loader2, Edit2, Layout } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { storage, StoredFile } from '../lib/storage';
 
-type FileCategory = 'ending_card' | 'music' | 'logo';
+type FileCategory = 'ending_card' | 'music' | 'logo' | 'thumbnail';
 
 export function FilesPage() {
     const navigate = useNavigate();
@@ -13,6 +13,8 @@ export function FilesPage() {
     const [initializing, setInitializing] = useState(true);
     const [playingId, setPlayingId] = useState<string | null>(null);
     const audioRefs = React.useRef<Record<string, HTMLAudioElement>>({});
+    const [uploadLanguage, setUploadLanguage] = useState<'pt' | 'en'>('pt');
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     const togglePlay = (id: string) => {
         const audio = audioRefs.current[id];
@@ -65,6 +67,7 @@ export function FilesPage() {
                 type: file.type.startsWith('audio') ? 'audio' : 'image',
                 category: activeTab,
                 isDefault: files.filter(f => f.category === activeTab).length === 0, // First one is default
+                language: uploadLanguage,
                 createdAt: Date.now(),
             };
 
@@ -118,6 +121,23 @@ export function FilesPage() {
         }
     };
 
+
+
+    const handleUpdateLanguage = async (file: StoredFile, newLang: 'pt' | 'en') => {
+        const updatedFile = { ...file, language: newLang };
+
+        // Optimistic update
+        setFiles(prev => prev.map(f => f.id === file.id ? updatedFile : f));
+        setEditingId(null);
+
+        try {
+            await storage.updateFile(updatedFile);
+        } catch (error) {
+            console.error('Error updating language:', error);
+            // Revert optimistic update if needed, but for simple tag toggle not critical
+        }
+    };
+
     const filteredFiles = files.filter(f => f.category === activeTab);
 
     if (initializing) {
@@ -159,6 +179,16 @@ export function FilesPage() {
                         )}
                     </button>
                     <button
+                        onClick={() => setActiveTab('thumbnail')}
+                        className={`pb-4 px-2 font-medium text-sm transition-colors relative ${activeTab === 'thumbnail' ? 'text-[#FF0000]' : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        Capas
+                        {activeTab === 'thumbnail' && (
+                            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#FF0000]" />
+                        )}
+                    </button>
+                    <button
                         onClick={() => setActiveTab('music')}
                         className={`pb-4 px-2 font-medium text-sm transition-colors relative ${activeTab === 'music' ? 'text-[#FF0000]' : 'text-gray-500 hover:text-gray-700'
                             }`}
@@ -195,6 +225,19 @@ export function FilesPage() {
                             <p className="text-xs text-gray-500">
                                 {activeTab === 'music' ? 'MP3, WAV (Max 10MB)' : 'PNG, JPG, WEBP (Max 5MB)'}
                             </p>
+
+                            {/* Language Selector inside Dropzone (prevents click propagation) */}
+                            <div className="mt-2 flex items-center gap-2" onClick={(e) => e.preventDefault()}>
+                                <label className="text-xs text-gray-500">Idioma:</label>
+                                <select
+                                    value={uploadLanguage}
+                                    onChange={(e) => setUploadLanguage(e.target.value as 'pt' | 'en')}
+                                    className="text-xs bg-white border border-gray-300 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                >
+                                    <option value="pt">Português 🇧🇷</option>
+                                    <option value="en">Inglês 🇺🇸</option>
+                                </select>
+                            </div>
                         </div>
                         <input
                             type="file"
@@ -268,6 +311,13 @@ export function FilesPage() {
                                     <Star className={`w-4 h-4 ${file.isDefault ? 'fill-current' : ''}`} />
                                 </button>
                                 <button
+                                    onClick={() => setEditingId(file.id)}
+                                    title="Editar idioma"
+                                    className="p-1.5 bg-gray-900/50 text-white rounded-full hover:bg-gray-900 transition-colors"
+                                >
+                                    <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
                                     onClick={() => handleDelete(file.id)}
                                     className="p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
                                 >
@@ -277,20 +327,44 @@ export function FilesPage() {
 
                             {/* Info */}
                             <div className="p-3">
-                                <p className="text-sm font-medium text-gray-900 truncate" title={file.name}>
-                                    {file.name}
-                                </p>
-                                <div className="flex items-center justify-between mt-1">
-                                    <p className="text-xs text-gray-500">
-                                        {new Date(file.createdAt).toLocaleDateString()}
-                                    </p>
-                                    {file.isDefault && (
-                                        <span className="text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                            <Star className="w-3 h-3 fill-current" />
-                                            Padrão
-                                        </span>
-                                    )}
-                                </div>
+                                {editingId === file.id ? (
+                                    <div className="flex flex-col gap-2">
+                                        <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                                        <select
+                                            autoFocus
+                                            value={file.language || 'pt'}
+                                            onChange={(e) => handleUpdateLanguage(file, e.target.value as 'pt' | 'en')}
+                                            onBlur={() => setEditingId(null)}
+                                            className="text-xs bg-gray-50 border border-gray-300 rounded px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                        >
+                                            <option value="pt">Português 🇧🇷</option>
+                                            <option value="en">Inglês 🇺🇸</option>
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <p className="text-sm font-medium text-gray-900 truncate" title={file.name}>
+                                            {file.name}
+                                        </p>
+                                        {/* Language Badge */}
+                                        {file.language && (
+                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ml-2 ${file.language === 'pt' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                {file.language.toUpperCase()}
+                                            </span>
+                                        )}
+                                        <div className="flex items-center justify-between mt-1">
+                                            <p className="text-xs text-gray-500">
+                                                {new Date(file.createdAt).toLocaleDateString()}
+                                            </p>
+                                            {file.isDefault && (
+                                                <span className="text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                    <Star className="w-3 h-3 fill-current" />
+                                                    Padrão
+                                                </span>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     ))}
