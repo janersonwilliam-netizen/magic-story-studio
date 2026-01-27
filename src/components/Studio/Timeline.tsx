@@ -203,14 +203,25 @@ function DraggableClip({
 
                 {/* Audio waveform with gradient background */}
                 {clip.type === 'audio' && (
-                    <div className="flex items-center h-full px-1 gap-px bg-gradient-to-r from-blue-600 to-blue-700">
-                        {Array.from({ length: Math.floor(width / 4) }).map((_, i) => (
-                            <div
-                                key={i}
-                                className="w-0.5 bg-white/60 rounded-full"
-                                style={{ height: `${20 + Math.sin(i * 0.3) * 30 + Math.random() * 25}%` }}
-                            />
-                        ))}
+                    <div className="flex items-center h-full pr-2 bg-blue-600 relative overflow-hidden border border-blue-400/30">
+                        {/* Content Overlay - Left Side */}
+                        <div className="flex items-center gap-2 text-white font-medium text-xs px-2 py-1 z-20 flex-shrink-0 max-w-[60%]">
+                            <Music className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="truncate drop-shadow-sm">
+                                {clip.name || (clip.audioUrl?.startsWith('data:') ? 'Áudio Importado' : clip.audioUrl?.split('/').pop()?.split('?')[0]) || 'Áudio sem nome'}
+                            </span>
+                        </div>
+
+                        {/* Waveform Background - Fills remaining space to the right */}
+                        <div className="flex-1 h-full flex items-center gap-0.5 opacity-40 overflow-hidden">
+                            {Array.from({ length: Math.floor(width / 6) }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="w-0.5 bg-white rounded-full flex-shrink-0"
+                                    style={{ height: `${20 + Math.sin(i * 0.5) * 40 + Math.random() * 30}%` }}
+                                />
+                            ))}
+                        </div>
                     </div>
                 )}
 
@@ -322,7 +333,7 @@ function Playhead({
                 onMouseDown={handleMouseDown}
                 className="absolute -top-0 -left-2 w-4 h-4 bg-white rounded-b flex items-center justify-center hover:bg-gray-200 transition-colors"
             >
-                <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] border-t-[#0d0d1a] mt-0.5" />
+                <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] border-t-[#0f172a] mt-0.5" />
             </div>
             {/* Extended Line - Always visible, full height */}
             <div className="w-0.5 h-[200vh] bg-white shadow-[0_0_4px_rgba(0,0,0,0.5)] pointer-events-none mx-auto" />
@@ -374,12 +385,12 @@ function Track({
     const getTrackColors = () => {
         switch (trackConfig.type) {
             case 'media':
-                return { bg: '#1a1f2e', border: '#2d3748', accent: '#4f46e5' };
+                return { bg: '#1e293b', border: '#334155', accent: '#f97316' }; // Orange for Media (Primary)
             case 'audio':
-                return { bg: '#1a2420', border: '#2d4a3e', accent: '#10b981' };
+                return { bg: '#1e293b', border: '#334155', accent: '#10b981' }; // Emerald for Audio
             case 'caption':
             default:
-                return { bg: '#1f1a2e', border: '#3d2d4a', accent: '#8b5cf6' };
+                return { bg: '#1e293b', border: '#334155', accent: '#8b5cf6' }; // Violet for others
         }
     };
 
@@ -785,25 +796,25 @@ export function Timeline({
             onDragEnd={handleDragEnd}
             onDragMove={handleDragMove}
         >
-            <div className="relative bg-[#0d0d1a] h-full flex flex-col">
+            <div className="relative bg-background h-full flex flex-col">
                 <style>{`
                     .timeline-scroll::-webkit-scrollbar {
                         height: 10px;
                         width: 10px;
                     }
                     .timeline-scroll::-webkit-scrollbar-track {
-                        background: #0d0d1a;
+                        background: #1a1a1a;
                     }
                     .timeline-scroll::-webkit-scrollbar-thumb {
                         background: #4b5563;
                         border-radius: 5px;
-                        border: 2px solid #0d0d1a;
+                        border: 2px solid #1a1a1a;
                     }
                     .timeline-scroll::-webkit-scrollbar-thumb:hover {
                         background: #6b7280;
                     }
                     .timeline-scroll::-webkit-scrollbar-corner {
-                        background: #0d0d1a;
+                        background: #1a1a1a;
                     }
                 `}</style>
 
@@ -814,12 +825,12 @@ export function Timeline({
                 >
                     {/* Time Ruler (Sticky Top) */}
                     <div
-                        className="sticky top-0 z-40 bg-[#1a1a2e] border-b border-[#2d2d4a] flex items-end cursor-pointer"
+                        className="sticky top-0 z-40 bg-[#1f1f1f] border-b border-[#333333] flex items-end cursor-pointer"
                         style={{ height: 28, minWidth: '100%', width: 'fit-content' }}
                         onClick={handleRulerClick}
                     >
                         {/* Label spacer - Sticky Left */}
-                        <div className="sticky left-0 z-50 bg-[#1a1a2e] border-r border-[#2d2d4a] flex-shrink-0" style={{ width: LABEL_WIDTH, height: '100%' }} />
+                        <div className="sticky left-0 z-50 bg-[#1f1f1f] border-r border-[#333333] flex-shrink-0" style={{ width: LABEL_WIDTH, height: '100%' }} />
 
                         <div className="relative h-full" style={{ width: totalWidth }}>
                             {markers.map(t => (
@@ -842,7 +853,7 @@ export function Timeline({
 
                         {/* Media Section Header */}
                         {mediaTracks.length > 0 && (
-                            <div className="sticky left-0 z-30 flex items-center gap-2 px-2 py-1.5 bg-[#1a1f2e] border-b border-[#2d3748] text-xs text-indigo-400" style={{ width: 'fit-content', minWidth: LABEL_WIDTH }}>
+                            <div className="sticky left-0 z-30 flex items-center gap-2 px-2 py-1.5 bg-[#2a2a2a] border-b border-[#333333] text-xs text-gray-300" style={{ width: 'fit-content', minWidth: LABEL_WIDTH }}>
                                 <Image className="w-3 h-3" />
                                 <span className="font-medium hidden sm:inline">Mídia</span>
                             </div>
@@ -853,7 +864,7 @@ export function Timeline({
                             <div key={trackConfig.id} className="relative flex">
                                 {/* Track Label - Sticky Left */}
                                 <div
-                                    className="flex-shrink-0 flex items-center justify-end pr-3 bg-[#0d0d1a] border-r border-b border-[#2d2d4a] sticky left-0 z-20"
+                                    className="flex-shrink-0 flex items-center justify-end pr-3 bg-[#1f1f1f] border-r border-b border-[#333333] sticky left-0 z-20"
                                     style={{ width: LABEL_WIDTH, height: TRACK_HEIGHT }}
                                 >
                                     <span className="text-[10px] text-gray-500 truncate">{trackConfig.label}</span>
@@ -887,7 +898,7 @@ export function Timeline({
 
                         {/* Audio Section Header */}
                         {audioTracks.length > 0 && (
-                            <div className="sticky left-0 z-30 flex items-center gap-2 px-2 py-1.5 bg-[#1a2420] border-b border-[#2d4a3e] text-xs text-emerald-400" style={{ width: 'fit-content', minWidth: LABEL_WIDTH }}>
+                            <div className="sticky left-0 z-30 flex items-center gap-2 px-2 py-1.5 bg-[#2a2a2a] border-b border-[#333333] text-xs text-gray-300" style={{ width: 'fit-content', minWidth: LABEL_WIDTH }}>
                                 <Music className="w-3 h-3" />
                                 <span className="font-medium hidden sm:inline">Áudio</span>
                             </div>
@@ -897,7 +908,7 @@ export function Timeline({
                         {audioTracks.map((trackConfig, idx) => (
                             <div key={trackConfig.id} className="relative flex">
                                 <div
-                                    className="flex-shrink-0 flex items-center justify-end pr-3 bg-[#0d0d1a] border-r border-b border-[#2d2d4a] sticky left-0 z-20"
+                                    className="flex-shrink-0 flex items-center justify-end pr-3 bg-[#1f1f1f] border-r border-b border-[#333333] sticky left-0 z-20"
                                     style={{ width: LABEL_WIDTH, height: TRACK_HEIGHT }}
                                 >
                                     <span className="text-[10px] text-gray-500 truncate">{trackConfig.label}</span>

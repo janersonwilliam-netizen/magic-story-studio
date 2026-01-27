@@ -346,7 +346,7 @@ export async function generateScenesWithGemini(
     // Logic for Intro/Outro injection
     // If we have a target count (e.g. 10), we want 1 Intro + (10-2) Story + 1 Outro
     const hasIntroOutro = !!params.title && !!params.targetSceneCount;
-    const storySceneCount = hasIntroOutro && params.targetSceneCount ? params.targetSceneCount - 2 : undefined;
+    const storySceneCount = hasIntroOutro && params.targetSceneCount ? params.targetSceneCount : undefined;
 
     // Calculate scene count constraints
     let minScenes = 6;
@@ -414,11 +414,16 @@ REGRAS DE SEPARAÇÃO:
    - Use APENAS uma destas opções EXATAS: alegre, calma, aventura, surpresa, medo, tristeza, curiosidade
    - NÃO use variações ou traduções (ex: "happy", "joyful", "feliz" são INVÁLIDOS)
 
-5. DETALHAMENTO VISUAL (CRÍTICO):
-   - A "visual_description" DEVE começar com o Enquadramento de Câmera (ex: "Plano Aberto", "Close-up", "Vista Aérea").
-   - DEVE incluir a Iluminação (ex: "Luz do sol dourada", "Luz da lua azulada", "Sombra dramática").
-   - DEVE descrever a ação principal.
-   - Exemplo: "Plano Aberto. Luz suave da manhã. O coelhinho saltita pela clareira verde cheia de flores."
+6. VARIEDADE CINEMATOGRÁFICA (OBRIGATÓRIO):
+   - Você DEVE variar os ângulos de câmera para evitar monotonia.
+   - USE ESTA LISTA DE ENQUADRAMENTOS: Plano Geral, Plano Médio, Close-up, Detalhe (Macro), Vista Aérea (Drone), Contra-Plongée (de baixo para cima), Plongée (de cima para baixo).
+   - REGRA DE OURO: NUNCA repita o mesmo enquadramento da cena anterior.
+
+7. DETALHAMENTO VISUAL (CRÍTICO):
+   - A "visual_description" DEVE começar com o Enquadramento de Câmera escolhido.
+   - DEVE incluir a Iluminação e a AÇÃO específica.
+   - TENTE descrever poses dinâmicas (correndo, pulando, agachado, voando) em vez de apenas "parado".
+   - Exemplo: "Contra-Plongée. O coelhinho salta alto sobre um tronco, orelhas ao vento. Luz do sol vibrante."
 
 Separe a seguinte história infantil em cenas para produção de vídeo.
 
@@ -595,11 +600,11 @@ NÃO use outras palavras ou traduções.`;
             const introScene: Scene = {
                 order: 0, // Will be re-indexed
                 narration_text: `Hoje eu vou contar uma historinha super doce e cheia de aventura! É a história "${params.title}"!`,
-                visual_description: `TITLE CARD: "${params.title}". Disney/Pixar 3D style title text. The main character posing happily next to the text. Magical, vibrant, high quality render.`,
+                visual_description: `TITLE CARD: "${params.title}". Movie Poster Layout. Disney/Pixar 3D style. Big bold 3D typography title. The main character posing dynamically. Cinematic lighting, magical atmosphere.`,
                 emotion: 'alegre',
                 duration_estimate: 6,
                 characters: ['__PROTAGONIST__'], // Special marker to be replaced by actual protagonist in UI
-                image_prompt: `Title card text "${params.title}" in 3D Disney/Pixar animation style, big colorful letters, with the main character posing happily, magical background with sparkles, high quality 8k render`
+                image_prompt: `Movie Poster for "${params.title}". The Title "${params.title}" in BIG BOLD 3D Typography (Disney style). The main character is posing dynamically next to the text. Magical background, cinematic lighting, sparkles, high quality 8k render, depth of field.`
             };
 
             // OUTRO SCENE
@@ -698,8 +703,8 @@ export async function generateImagePrompt(params: GenerateImagePromptParams): Pr
 
         console.log('[Image Prompt] Template-based prompt generated');
     } else {
-        // Default prompt structure
-        finalPrompt = `${style}. ${characterDetails}. ${params.visual_description}. Emotion: ${params.emotion}. High quality, detailed, cinematic lighting, vibrant colors, 1920x1080 resolution.`;
+        // Default prompt structure - UPDATED: Scene/Action comes BEFORE Character Details to prioritize composition
+        finalPrompt = `${style}. SCENE ACTION: ${params.visual_description}. CHARACTERS IN SCENE: ${characterDetails}. Emotion: ${params.emotion}. High quality, detailed, cinematic lighting, 8k resolution, dynamic angle.`;
         console.log('[Image Prompt] Default prompt generated');
     }
 

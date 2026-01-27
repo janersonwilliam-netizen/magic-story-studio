@@ -70,6 +70,7 @@ export interface CharacterDNA {
     accessories: string; // 'Chapéu mágico dourado'
     description: string; // Full character sheet
     full_description?: string; // Additional detailed description if available
+    mainColors: string[]; // Extracted main colors
     status: 'protagonist' | 'supporting' | 'background';
 }
 
@@ -98,6 +99,7 @@ export interface TimelineClip {
     text?: string;
     track: number; // Legacy: 0 = caption, 1 = video, 2 = sound, 3 = music
     trackId?: string; // New: Custom track ID for dynamic tracks
+    name?: string; // Display name for the clip
 }
 
 /**

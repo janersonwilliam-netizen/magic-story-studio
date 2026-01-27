@@ -99,9 +99,9 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
 
                 // New Prompt specialized for Title Card + Characters
                 prompt = `TITULO: ${storyWithScenes.title}
-CENA: Movie Poster Layout. Disney/Pixar 3D style. Cinematic lighting, magical atmosphere, 16:9 wide shot.
-PERSONAGEM: ${charText}. Posing happily NEXT TO the title text.
-EMOÇÃO: Happy, Excited.`;
+CENA: Movie Poster Layout. Disney/Pixar 3D style. The title text "${storyWithScenes.title}" is displayed in BIG, BOLD, 3D TYPOGRAPHY (like a movie logo) at the top or center. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.
+PERSONAGEM: ${charText}. Posing dynamically interactions with the title text (e.g. leaning on it, jumping over it, presenting it).
+EMOÇÃO: Happy, Excited, Adventurous.`;
 
                 console.log(`[ThumbnailPage] Using references for: ${selectedNames.join(', ')}`);
 
@@ -170,14 +170,14 @@ EMOÇÃO: Happy, Excited.`;
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl shadow-lg p-8"
+                className="bg-card rounded-2xl shadow-lg p-8 border border-border"
             >
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                    <h1 className="text-4xl font-bold text-foreground mb-2">
                         Capa da História
                     </h1>
-                    <p className="text-gray-600">
+                    <p className="text-muted-foreground">
                         Escolha quem aparece na capa e gere um título incrível
                     </p>
                 </div>
@@ -185,11 +185,11 @@ EMOÇÃO: Happy, Excited.`;
                 <div className="grid md:grid-cols-2 gap-8 items-start">
 
                     {/* Preview Area */}
-                    <div className="bg-gray-100 rounded-xl overflow-hidden aspect-video relative flex items-center justify-center border-2 border-gray-200 shadow-inner group">
+                    <div className="bg-muted/30 rounded-xl overflow-hidden aspect-video relative flex items-center justify-center border-2 border-border shadow-inner group">
                         {generating ? (
                             <div className="flex flex-col items-center">
-                                <Loader2 className="w-12 h-12 text-[#FF0000] animate-spin mb-2" />
-                                <p className="text-gray-500 font-medium">Criando capa mágica...</p>
+                                <Loader2 className="w-12 h-12 text-primary animate-spin mb-2" />
+                                <p className="text-muted-foreground font-medium">Criando capa mágica...</p>
                             </div>
                         ) : imageUrl ? (
                             <>
@@ -205,12 +205,12 @@ EMOÇÃO: Happy, Excited.`;
                                 </div>
                             </>
                         ) : error ? (
-                            <div className="flex flex-col items-center text-red-500 p-4 text-center">
+                            <div className="flex flex-col items-center text-destructive p-4 text-center">
                                 <span className="text-2xl mb-2">⚠️</span>
                                 <p>{error}</p>
                             </div>
                         ) : (
-                            <p className="text-gray-400">Aguardando geração...</p>
+                            <p className="text-muted-foreground/50">Aguardando geração...</p>
                         )}
                     </div>
 
@@ -218,8 +218,8 @@ EMOÇÃO: Happy, Excited.`;
                     <div className="space-y-6">
 
                         {/* Protagonist Selection */}
-                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
-                            <label className="block text-sm font-semibold text-purple-900 mb-3 flex items-center gap-2">
+                        <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
+                            <label className="block text-sm font-semibold text-primary mb-3 flex items-center gap-2">
                                 <User className="w-4 h-4" />
                                 Escolha os Personagens da Capa ({selectedCharacters.length})
                             </label>
@@ -232,23 +232,23 @@ EMOÇÃO: Happy, Excited.`;
                                             key={name}
                                             onClick={() => toggleCharacter(name)}
                                             className={`flex items-center gap-2 p-2 rounded-lg border transition-all text-left ${isSelected
-                                                ? 'bg-white border-purple-500 shadow-md ring-2 ring-purple-200'
-                                                : 'bg-white/50 border-gray-200 hover:bg-white hover:border-purple-300 opacity-70 hover:opacity-100'
+                                                ? 'bg-card border-primary shadow-md ring-2 ring-primary/20'
+                                                : 'bg-card/50 border-border hover:bg-card hover:border-primary/50 opacity-70 hover:opacity-100'
                                                 }`}
                                         >
                                             <div className="relative">
-                                                <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
+                                                <div className="w-10 h-10 rounded-full overflow-hidden bg-muted flex-shrink-0">
                                                     <img src={imgUrl} alt={name} className="w-full h-full object-cover" />
                                                 </div>
                                                 {isSelected && (
-                                                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
+                                                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-background flex items-center justify-center">
                                                         <Check className="w-2 h-2 text-white" />
                                                     </div>
                                                 )}
                                             </div>
                                             <div className="min-w-0">
-                                                <span className="text-sm font-medium block truncate">{name}</span>
-                                                <span className="text-xs text-purple-600 truncate block">
+                                                <span className="text-sm font-medium block truncate text-foreground">{name}</span>
+                                                <span className="text-xs text-primary/80 truncate block">
                                                     {storyWithScenes.characters[name]?.status === 'protagonist' ? 'Protagonista' : 'Coadjuvante'}
                                                 </span>
                                             </div>
@@ -256,17 +256,17 @@ EMOÇÃO: Happy, Excited.`;
                                     );
                                 })}
                             </div>
-                            <p className="text-xs text-purple-700 mt-2 opacity-80">
+                            <p className="text-xs text-primary/70 mt-2 opacity-80">
                                 Dica: Selecione quem é importante para o título "{storyWithScenes.title}"
                             </p>
                         </div>
 
                         {/* Title Display */}
-                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+                        <div className="bg-muted/30 p-4 rounded-xl border border-border">
+                            <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1">
                                 Título da História
                             </label>
-                            <p className="text-lg font-bold text-gray-800 leading-tight">
+                            <p className="text-lg font-bold text-foreground leading-tight">
                                 {storyWithScenes.title}
                             </p>
                         </div>
@@ -276,7 +276,7 @@ EMOÇÃO: Happy, Excited.`;
                             <button
                                 onClick={generateThumbnail}
                                 disabled={generating}
-                                className="w-full py-3 bg-white border-2 border-gray-200 text-gray-700 rounded-xl hover:border-[#FF0000] hover:text-[#FF0000] transition-colors font-semibold flex items-center justify-center gap-2 shadow-sm"
+                                className="w-full py-3 bg-card border-2 border-border text-foreground rounded-xl hover:border-primary hover:text-primary transition-colors font-semibold flex items-center justify-center gap-2 shadow-sm"
                             >
                                 {generating ? (
                                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -289,7 +289,7 @@ EMOÇÃO: Happy, Excited.`;
                             <button
                                 onClick={handleConfirm}
                                 disabled={!imageUrl || generating}
-                                className="w-full py-4 bg-[#FF0000] text-white rounded-xl hover:bg-red-600 transition-colors font-bold text-lg shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                className="w-full py-4 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-bold text-lg shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
                                 <span>Continuar</span>
                                 <ArrowRight className="w-5 h-5" />
@@ -301,7 +301,7 @@ EMOÇÃO: Happy, Excited.`;
                 <div className="mt-8 flex justify-center">
                     <button
                         onClick={onBack}
-                        className="text-gray-500 hover:text-gray-700 font-medium text-sm flex items-center gap-1"
+                        className="text-muted-foreground hover:text-foreground font-medium text-sm flex items-center gap-1"
                     >
                         ← Voltar para Personagens
                     </button>

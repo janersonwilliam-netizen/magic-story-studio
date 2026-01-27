@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Scissors, Upload, Type, Volume2, Mic, Gauge, Loader2, ZoomIn, ZoomOut, Sparkles, Wand2, Image, Zap, Music, FileImage, CreditCard, Plus, GripVertical, Layers, MessageSquareQuote, Layout } from 'lucide-react';
+import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Scissors, Upload, Type, Volume2, Mic, Gauge, Loader2, ZoomIn, ZoomOut, Sparkles, Wand2, Image, Zap, Music, FileImage, CreditCard, Plus, GripVertical, Layers, MessageSquareQuote, Layout, Download } from 'lucide-react';
 import type { StoryWithScenes, TimelineClip } from '../../types/studio';
-import { VideoPreview } from './VideoPreview';
+import { VideoPreview, VideoPreviewRef } from './VideoPreview';
 import { Timeline, TimelineTrack } from './Timeline';
 import { storage, StoredFile } from '../../lib/storage';
 
@@ -43,6 +43,8 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
     const [error, setError] = useState('');
     const [activePanel, setActivePanel] = useState('media'); // 'media', 'music', 'logos', 'endcards'
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const videoPreviewRef = React.useRef<VideoPreviewRef>(null);
+    const [isExporting, setIsExporting] = useState(false);
     const [libraryFiles, setLibraryFiles] = useState<StoredFile[]>([]);
     const [draggedItem, setDraggedItem] = useState<{ type: 'media' | 'audio'; data: any } | null>(null);
     const [customTracks, setCustomTracks] = useState<TimelineTrack[]>([
@@ -73,7 +75,8 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
     ];
 
     // Global Settings State
-    const [backgroundVolume, setBackgroundVolume] = useState(0.2);
+    // Global Settings State
+    const [backgroundVolume, setBackgroundVolume] = useState(1.0);
     const [selectedTransition, setSelectedTransition] = useState('page-turn');
     const [visualEffect, setVisualEffect] = useState('ken-burns'); // 'none' | 'ken-burns'
     const [effectDuration, setEffectDuration] = useState(3);
@@ -87,14 +90,15 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
             const filtered = prev.filter(c => c.trackId !== 'music-track');
             // Add new music clip
             const newClip: TimelineClip = {
-                id: `music-${Date.now()}`,
+                id: `music - ${Date.now()} `,
                 type: 'audio',
                 track: 2, // Assuming track 2 is for music (based on previous logic)
                 trackId: 'music-track',
                 startTime: 0,
                 duration: totalDuration || 300, // Cover whole video
                 sceneId: 'bg-music-global',
-                audioUrl: file.url
+                audioUrl: file.url,
+                name: file.name
             };
             return [...filtered, newClip];
         });
@@ -104,7 +108,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
         setClips((prev) => {
             const filtered = prev.filter(c => c.trackId !== 'logo-track');
             const newClip: TimelineClip = {
-                id: `logo-${Date.now()}`,
+                id: `logo - ${Date.now()} `,
                 type: 'video', // Using 'video' type but treating as image overlay
                 track: 99, // High track number for overlay
                 trackId: 'logo-track',
@@ -119,7 +123,8 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
 
     useEffect(() => {
         initializeTimeline();
-        loadLibraryFiles();
+        // Defer heavy DB load to allow UI to paint first
+        setTimeout(loadLibraryFiles, 500);
     }, []);
 
     // Helper to ensure Global Tracks (Logo, Music) match visual duration
@@ -154,65 +159,12 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
 
             // Setup source from the first music clip found (preserving ID/Url)
             const sourceMusic = musicClips[0];
-            const musicSourceDuration = 300; // Estimation? Or do we know the file audio duration?
-            // Since we don't have metadata for audio duration easily here unless in 'file', we rely on user dragging or default.
-            // But if we want to loop, we assume the clip duration IS the file duration if it wasn't trimmed.
-            // Actually, loops are complex without knowing original length. 
-            // Simplification: Use the existing logic of ONE huge clip or repeating clips?
-            // User asked: "duplique ele e corte". Duplicate implies distinct clips.
 
-            // If we treat the first music clip as the reference "track item":
-            // We need to know its original length.
-            // If we don't know, we can just stretch it? No, audio pitch shifts.
-            // Let's assume the user added a music file.
-
-            // STRATEGY: 
-            // If we have a music clip, we assume its current `duration` is what the user *intended* or valid. 
-            // IF it is shorter than visualDuration, we clone it.
-            // We need the *original full length* of the file to loop properly.
-            // `TimelineClip` doesn't store 'originalDuration'. 
-            // BUT, usually `loadLibraryFiles` sets duration to 300 (5 min) default.
-            // If the music file is actually 3 mins, playing 5 mins might be silence or loop? 
-            // `HTMLAudioElement` loops if we tell it? No `VideoPreview` handles playback.
-
-            // Let's stick to the User Request: "se o fundo musical acabar antes... duplique".
-            // We will assume the current music clip duration is the "loop unit".
-            // We can't know real duration without metadata. 
-            // Let's rely on: If a music clip exists, we use its properties.
-
-            let currentMusicTime = 0;
-            let loopCount = 0;
-
-            // Use 300s as default loop unit if duration looks default/arbitrary? 
-            // Or better, just stretch the single clip to fit if we don't support real loops yet?
-            // "Duplique" implies multiple clips.
-
-            // If we assume the visual duration is X.
-            // We add music clips starting at 0, length = source.duration.
-            // Until we cover X.
-
-            const loopUnitDuration = Math.min(sourceMusic.duration, 300); // Guard against infinite
-            // But wait, if sourceMusic.duration IS the totalDuration (300), then it's just one clip usually.
-
-            // Effective implementation: Just set ONE music clip with duration = visualDuration?
-            // If `VideoPreview` loops the audio source automatically, we just need duration.
-            // `VideoPreview` uses `audioRef`. 
-            // If `audio.loop = true`, it loops the file.
-            // So if we just set duration to `visualDuration`, and enable loop in player, it works!
-            // BUT `TimelineClip` structure implies linear placement.
-
-            // Let's just create ONE music clip that spans the whole video.
-            // And in `VideoPreview`, we ensure `loop` is true for music.
             newClips.push({
                 ...sourceMusic,
                 startTime: 0,
                 duration: visualDuration
             });
-
-            // Note: User said "duplique e corte". 
-            // If we rely on <audio loop>, we don't need multiple clips on UI. 
-            // Visually one long bar is cleaner. 
-            // This fulfills "adaptable" requirement most robustly.
         }
 
         return newClips;
@@ -221,9 +173,10 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
     // Load library files from IndexedDB
     const loadLibraryFiles = async () => {
         try {
+            console.log('[TimelinePage] Fetching library files...');
             const files = await storage.getAllFiles();
             setLibraryFiles(files);
-            console.log('[TimelinePage] Loaded library files:', files);
+            console.log(`[TimelinePage] Loaded ${files.length} library files.`);
 
             // Auto-select default PT Logo if no logo track exists
             const hasLogo = clips.some(c => c.trackId === 'logo-track');
@@ -246,14 +199,15 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                     const startTime = lastClip ? (lastClip.startTime + lastClip.duration) : 0;
 
                     const newClip: TimelineClip = {
-                        id: `endcard-${Date.now()}`,
+                        id: `endcard - ${Date.now()} `,
                         type: 'video',
                         track: 1,
                         trackId: 'media-track',
                         startTime: startTime,
                         duration: 5,
                         sceneId: 'end-card-auto',
-                        imageUrl: defaultEndCard.url
+                        imageUrl: defaultEndCard.url,
+                        name: defaultEndCard.name
                     };
 
                     return [...prev, newClip];
@@ -268,14 +222,15 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                     if (prev.some(c => c.trackId === 'music-track')) return ensureGlobalTracksSync(prev);
 
                     const newClip: TimelineClip = {
-                        id: `music-${Date.now()}`,
+                        id: `music - ${Date.now()} `,
                         type: 'audio',
                         track: 2,
                         trackId: 'music-track',
                         startTime: 0,
                         duration: 300,
                         sceneId: 'bg-music-auto',
-                        audioUrl: defaultMusic.url
+                        audioUrl: defaultMusic.url,
+                        name: defaultMusic.name
                     };
                     // Apply sync after adding
                     return ensureGlobalTracksSync([...prev, newClip]);
@@ -309,39 +264,157 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
         };
     }, []);
 
-    // Smooth playhead animation
-    useEffect(() => {
-        if (!isPlaying) return;
-
-        const interval = setInterval(() => {
-            setCurrentTime((prevTime) => {
-                const newTime = prevTime + 0.016; // ~60fps
-                if (newTime >= totalDuration) {
-                    setIsPlaying(false);
-                    return totalDuration;
-                }
-                return newTime;
-            });
-        }, 16); // ~60fps
-
-        return () => clearInterval(interval);
-    }, [isPlaying, totalDuration]);
-
-    // Handle media import
+    // Handle Media Import
     const handleMediaImport = () => {
         fileInputRef.current?.click();
     };
+
+    // Handle Export
+    const handleExport = async () => {
+        if (videoPreviewRef.current) {
+            setIsExporting(true);
+            try {
+                await videoPreviewRef.current.exportVideo();
+            } catch (err) {
+                console.error("Export failed", err);
+                setError("Falha na exportação. Tente novamente.");
+            } finally {
+                setIsExporting(false);
+            }
+        }
+    };
+
+    const handleCancelExport = () => {
+        if (videoPreviewRef.current) {
+            videoPreviewRef.current.cancelExport();
+            setIsExporting(false);
+        }
+    };
+
+    // Audio Preview State
+    const [previewAudioId, setPreviewAudioId] = useState<string | null>(null);
+    const audioPreviewRef = React.useRef<HTMLAudioElement | null>(null);
+    const audioContextRef = React.useRef<AudioContext | null>(null);
+
+    const toggleAudioPreview = (e: React.MouseEvent, file: StoredFile) => {
+        e.stopPropagation();
+
+        // 1. Stop Current Playback
+        if (audioPreviewRef.current) {
+            audioPreviewRef.current.pause();
+            audioPreviewRef.current = null;
+        }
+        if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => { });
+            audioContextRef.current = null;
+        }
+
+        // If clicking same file, just stop (already done above) and clear state
+        if (previewAudioId === file.id) {
+            setPreviewAudioId(null);
+            return;
+        }
+
+        // 2. Start New Playback with Boost
+        try {
+            const audio = new Audio(file.url);
+            audio.crossOrigin = 'anonymous';
+
+            // Boost Volume using Web Audio API
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AudioContextClass();
+            const source = ctx.createMediaElementSource(audio);
+            const gainNode = ctx.createGain();
+
+            gainNode.gain.value = 2.5; // 250% Volume Boost
+
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+
+            audio.onended = () => {
+                setPreviewAudioId(null);
+                ctx.close().catch(() => { });
+            };
+
+            audio.play().catch(err => console.error('Preview play error:', err));
+
+            audioPreviewRef.current = audio;
+            audioContextRef.current = ctx;
+            setPreviewAudioId(file.id);
+        } catch (err) {
+            console.error('Audio boost failed, falling back to normal:', err);
+            // Fallback to standard player
+            const audio = new Audio(file.url);
+            audio.volume = 1.0;
+            audio.onended = () => setPreviewAudioId(null);
+            audio.play();
+            audioPreviewRef.current = audio;
+            setPreviewAudioId(file.id);
+        }
+    };
+
+    // Clean up audio on unmount
+    useEffect(() => {
+        return () => {
+            if (audioPreviewRef.current) {
+                audioPreviewRef.current.pause();
+            }
+            if (audioContextRef.current) {
+                audioContextRef.current.close().catch(() => { });
+            }
+        };
+    }, []);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
-        // Process uploaded files here
-        // For now, just log them
-        Array.from(files).forEach((file: File) => {
-            console.log('[TimelinePage] Uploaded file:', file.name, file.type);
-            // TODO: Upload to storage and add to project media library
-        });
+        setLoading(true);
+        try {
+            const fileList = Array.from(files);
+            for (const file of fileList) {
+                const reader = new FileReader();
+                await new Promise<void>((resolve) => {
+                    reader.onload = async () => {
+                        const base64 = reader.result as string;
+                        let category: any = 'media';
+
+                        // Determinar categoria baseado no painel ativo ou tipo
+                        if (activePanel === 'music') category = 'music';
+                        else if (activePanel === 'logos') category = 'logo';
+                        else if (activePanel === 'endcards') category = 'ending_card';
+                        else if (activePanel === 'thumbnail') category = 'thumbnail';
+                        else if (file.type.startsWith('audio')) category = 'music';
+
+                        const newFile: StoredFile = {
+                            id: crypto.randomUUID(),
+                            name: file.name,
+                            url: base64, // Saves locally with Base64 immediately
+                            type: file.type.startsWith('audio') ? 'audio' : 'image',
+                            category: category,
+                            isDefault: false,
+                            language: narrationLanguage,
+                            createdAt: Date.now()
+                        };
+
+                        await storage.saveFile(newFile);
+                        resolve();
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // Reload library to show new files
+            await loadLibraryFiles();
+
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            setError('Falha ao salvar arquivo na biblioteca.');
+        } finally {
+            setLoading(false);
+            // Reset input
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const initializeTimeline = async () => {
@@ -384,7 +457,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
             const clipDuration = audioDuration + 1;
 
             newClips.push({
-                id: `video-${sceneId}`,
+                id: `video - ${sceneId} `,
                 type: 'video',
                 track: 1,
                 trackId: 'media-track',
@@ -396,19 +469,20 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
 
             if (audioUrl) {
                 newClips.push({
-                    id: `audio-${sceneId}`,
+                    id: `audio - ${sceneId} `,
                     type: 'audio',
                     track: 2,
                     trackId: 'audio-track',
                     startTime: currentStartTime,
                     duration: audioDuration,
                     sceneId,
-                    audioUrl
+                    audioUrl,
+                    name: `Narração Cena ${storyWithScenes.scenes.findIndex(s => s.id === sceneId) + 1} `
                 });
             }
 
             newClips.push({
-                id: `caption-${sceneId}`,
+                id: `caption - ${sceneId} `,
                 type: 'caption',
                 track: 0,
                 startTime: currentStartTime,
@@ -448,7 +522,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
     };
 
     const handleDropOnTimeline = useCallback(async (trackId: string, data: { type: 'media' | 'audio'; data: any }, dropTime: number) => {
-        const newClipId = `custom-${Date.now()}`;
+        const newClipId = `custom - ${Date.now()} `;
 
         let defaultDuration = data.type === 'audio' ? 10 : 5;
 
@@ -492,7 +566,8 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                 startTime: finalStartTime,
                 duration: defaultDuration,
                 sceneId: newClipId,
-                ...(data.type === 'audio' ? { audioUrl: data.data.url } : { imageUrl: data.data.imageUrl || data.data.url })
+                ...(data.type === 'audio' ? { audioUrl: data.data.url } : { imageUrl: data.data.imageUrl || data.data.url }),
+                name: data.data.name || (data.type === 'audio' ? 'Áudio' : 'Clip')
             };
 
             return [...updatedClips, newClip];
@@ -504,9 +579,9 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
         const timestamp = Date.now();
         const existingOfType = customTracks.filter(t => t.type === type).length;
         const newTrack: TimelineTrack = {
-            id: `${type}-${timestamp}`,
+            id: `${type} -${timestamp} `,
             type,
-            label: `${type === 'media' ? 'Mídia' : 'Áudio'} ${existingOfType + 1}`
+            label: `${type === 'media' ? 'Mídia' : 'Áudio'} ${existingOfType + 1} `
         };
         // Add track - it will be empty, ready to receive dragged elements
         setCustomTracks(prev => [...prev, newTrack]);
@@ -516,7 +591,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         const ms = Math.floor((seconds % 1) * 100);
-        return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+        return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')} `;
     };
 
     // Loading state
@@ -532,7 +607,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                         <>
                             <p className="text-gray-400 mb-4">Criando narração...</p>
                             <div className="w-full bg-[#2a2a3e] rounded-full h-2 mb-2">
-                                <div className="bg-red-500 h-2 rounded-full transition-all" style={{ width: `${audioProgress}%` }} />
+                                <div className="bg-red-500 h-2 rounded-full transition-all" style={{ width: `${audioProgress}% ` }} />
                             </div>
                             <p className="text-sm text-gray-500">{audioProgress}%</p>
                         </>
@@ -570,13 +645,30 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                     </button>
                     <span className="text-white font-medium text-sm md:text-base truncate max-w-[150px] md:max-w-none">{storyWithScenes.title || 'Editor'}</span>
                 </div>
-
-                <div className="flex items-center gap-2">
-                    <button className="hidden md:block px-4 py-2 bg-[#2a2a2a] text-white rounded-lg hover:bg-[#3a3a3a] text-sm">
-                        Compartilhar
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={onBack}
+                        disabled={isExporting}
+                        className="px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm"
+                    >
+                        Voltar
                     </button>
-                    <button onClick={handleConfirm} className="px-3 md:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs md:text-sm font-medium">
-                        Exportar
+                    <button
+                        onClick={handleExport}
+                        disabled={isExporting}
+                        className={`px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 hover:shadow-lg hover:shadow-red-500/20 transition-all font-medium text-sm flex items-center gap-2 ${isExporting ? 'opacity-50 cursor-wait' : ''}`}
+                    >
+                        {isExporting ? (
+                            <>
+                                <span className="animate-spin">⏳</span>
+                                Exportando...
+                            </>
+                        ) : (
+                            <>
+                                <Download className="w-4 h-4" />
+                                Exportar Vídeo
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
@@ -590,73 +682,76 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                         className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'narration' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
                             }`}
                     >
-                        <Mic className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1">Narração</span>
+                        <Mic className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Narração</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('media')}
                         className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'media' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
                             }`}
                     >
-                        <Image className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1">Mídia</span>
+                        <Image className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Mídia</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('music')}
                         className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'music' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
                             }`}
                     >
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1 hidden md:block">Música</span>
+                        <Music className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Música</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('thumbnail')}
                         className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'thumbnail' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
                             }`}
                     >
-                        <Layout className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1 hidden md:block">Capa</span>
+                        <Layout className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Capa</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('logos')}
                         className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'logos' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
                             }`}
                     >
-                        <FileImage className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1 hidden md:block">Logos</span>
+                        <FileImage className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Logos</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('endcards')}
                         className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'endcards' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
                             }`}
                     >
-                        <CreditCard className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1 hidden md:block">Cartões</span>
+                        <CreditCard className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Cartões</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('transitions')}
-                        className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'transitions' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'}`}
+                        className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'transitions' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
+                            }`}
                     >
-                        <Sparkles className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1 hidden md:block">Trans.</span>
+                        <Sparkles className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Trans.</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('effects')}
-                        className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'effects' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'}`}
+                        className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'effects' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
+                            }`}
                     >
-                        <Wand2 className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1 hidden md:block">FX</span>
+                        <Wand2 className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">FX</span>
                     </button>
                     <button
                         onClick={() => setActivePanel('subtitles')}
                         className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${activePanel === 'subtitles' ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'
                             }`}
                     >
-                        <MessageSquareQuote className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[10px] mt-0.5 md:mt-1 hidden md:block">Legendas</span>
+                        <MessageSquareQuote className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Legendas</span>
                     </button>
                     <button className="w-10 h-10 md:w-12 md:h-12 bg-[#2a2a2a] rounded-lg flex flex-col items-center justify-center text-gray-400 hover:bg-[#3a3a3a] hover:text-white transition-colors">
-                        <Type className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="text-[9px]md:text-[10px] mt-0.5 md:mt-1 hidden md:block">Texto</span>
+                        <Type className="w-5 h-5" />
+                        <span className="text-[10px] mt-1">Texto</span>
                     </button>
                 </div>
 
@@ -827,13 +922,31 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                                         .map((file) => (
                                             <div
                                                 key={file.id}
-                                                onClick={() => handleSelectMusic(file)}
                                                 className="aspect-video bg-[#2a2a2a] rounded-lg overflow-hidden cursor-pointer hover:ring-2 ring-purple-500 transition-all relative group"
                                             >
-                                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-[#2a2a2a]">
+                                                {/* Card Content - Click adds to timeline */}
+                                                <div
+                                                    className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-[#2a2a2a]"
+                                                    onClick={() => handleSelectMusic(file)}
+                                                >
                                                     <Music className="w-8 h-8 text-purple-400" />
                                                 </div>
-                                                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                                                {/* Play Button Overlay - Click toggles preview */}
+                                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                                    <button
+                                                        onClick={(e) => toggleAudioPreview(e, file)}
+                                                        className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                                                    >
+                                                        {previewAudioId === file.id ? (
+                                                            <Pause className="w-4 h-4 text-purple-600 fill-current" />
+                                                        ) : (
+                                                            <Play className="w-4 h-4 text-purple-600 fill-current ml-0.5" />
+                                                        )}
+                                                    </button>
+                                                </div>
+
+                                                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                     <div className="bg-red-600 rounded-full p-1">
                                                         <Plus className="w-3 h-3 text-white" />
                                                     </div>
@@ -949,7 +1062,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                                     <button
                                         key={opt.id}
                                         onClick={() => setSelectedTransition(opt.id)}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-lg gap-2 transition-colors ${selectedTransition === opt.id ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'}`}
+                                        className={`flex flex - col items - center justify - center p - 3 rounded - lg gap - 2 transition - colors ${selectedTransition === opt.id ? 'bg-red-600 text-white' : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#3a3a3a] hover:text-white'} `}
                                     >
                                         <span className="text-2xl">{opt.icon}</span>
                                         <span className="text-[10px] text-center">{opt.label}</span>
@@ -1033,10 +1146,49 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
 
                 {/* Right Content - Preview + Timeline in Single Block */}
                 <div className="flex-1 bg-[#1f1f1f] rounded-xl flex flex-col overflow-hidden min-w-0">
-                    {/* Video Preview - Adjusted to 45% for better timeline visibility */}
-                    <div className="h-[45%] w-full flex items-center justify-center p-3 min-h-0 flex-shrink-0">
+                    <div className="h-[45%] w-full flex items-center justify-center p-3 min-h-0 flex-shrink-0 relative">
+                        {isExporting && (
+                            <div className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-md">
+                                <div className="bg-[#1e1e2e] border border-[#2a2a3e] p-8 rounded-2xl max-w-md w-full text-center shadow-2xl relative overflow-hidden">
+                                    {/* Animated Background */}
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-red-500 animate-gradient-x" />
+
+                                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+                                        <Download className="w-8 h-8 text-red-500" />
+                                    </div>
+
+                                    <h3 className="text-2xl font-bold text-white mb-2">Exportando Vídeo</h3>
+                                    <p className="text-gray-400 text-sm mb-6">
+                                        O vídeo está sendo renderizado em tempo real. <br />
+                                        Por favor, não feche esta aba.
+                                    </p>
+
+                                    {/* Progress Bar */}
+                                    <div className="w-full bg-[#2a2a3e] rounded-full h-4 mb-2 overflow-hidden relative">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-red-600 to-orange-600 transition-all duration-300 ease-out relative"
+                                            style={{ width: `${(currentTime / totalDuration) * 100}%` }}
+                                        >
+                                            <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-400 mb-8 font-mono">
+                                        <span>Processando...</span>
+                                        <span>{(currentTime / totalDuration * 100).toFixed(0)}%</span>
+                                    </div>
+
+                                    <button
+                                        onClick={handleCancelExport}
+                                        className="text-gray-500 hover:text-white px-4 py-2 rounded-lg hover:bg-white/5 transition-colors text-sm font-medium border border-gray-700 hover:border-gray-500"
+                                    >
+                                        Cancelar Exportação
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <div className="h-full aspect-video shadow-lg">
                             <VideoPreview
+                                ref={videoPreviewRef}
                                 clips={clips}
                                 currentTime={currentTime}
                                 totalDuration={totalDuration}
@@ -1148,7 +1300,6 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                                     const data = JSON.parse(e.dataTransfer.getData('application/json'));
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     // Calculate time based on scroll? The rect is container, container scrolls?
-                                    // The container (line 620) has overflow-auto.
                                     // rect.left is viewport relative. element scrollLeft affects content.
                                     // e.clientX - rect.left is position within visible area.
                                     // Add scrollLeft to get absolute position in timeline width?
@@ -1194,6 +1345,6 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

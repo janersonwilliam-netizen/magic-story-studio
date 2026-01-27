@@ -283,26 +283,26 @@ ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alt
                 <div className="mb-8">
                     <div className="flex items-center justify-between mb-4">
                         <div>
-                            <h1 className="text-4xl font-bold text-gray-800 mb-2">
+                            <h1 className="text-4xl font-bold text-foreground mb-2">
                                 🧪 Teste de Consistência de Personagens
                             </h1>
-                            <p className="text-gray-600">
+                            <p className="text-muted-foreground">
                                 Gere as 3 cenas e veja como o personagem mantém suas características
                             </p>
                         </div>
                         <button
                             onClick={resetTemplate}
-                            className="px-4 py-2 bg-[#FF0000] text-white rounded-lg font-semibold hover:bg-red-700 transition-all"
+                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-all"
                         >
                             🔄 Resetar Template
                         </button>
                     </div>
 
                     {/* Character Description Editor */}
-                    <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg">
                         <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-semibold text-amber-800">🐄 Descrição do Personagem</h3>
-                            <span className="text-xs text-amber-600">
+                            <h3 className="font-semibold text-yellow-500">🐄 Descrição do Personagem</h3>
+                            <span className="text-xs text-yellow-600">
                                 {characterDescription ? '✅ Salva' : '⚠️ Não definida'}
                             </span>
                         </div>
@@ -310,19 +310,19 @@ ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alt
                             value={characterDescription}
                             onChange={(e) => setCharacterDescription(e.target.value)}
                             placeholder="Ex: Vaca marrom e branca, olhos expressivos, chifres pequenos, manchas características..."
-                            className="w-full p-3 border border-amber-300 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            className="w-full p-3 bg-background text-foreground border border-yellow-700/30 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-yellow-500"
                             rows={2}
                         />
-                        <p className="text-xs text-amber-700 mt-2">
+                        <p className="text-xs text-yellow-600 mt-2">
                             💡 <strong>Dica:</strong> Gere a primeira imagem e depois atualize esta descrição com as características visuais que você vê. As próximas cenas usarão esta descrição para manter a consistência.
                         </p>
                     </div>
 
                     {/* Template Display */}
                     {imageTemplate && (
-                        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="mb-4 p-4 bg-blue-900/20 border border-blue-700/50 rounded-lg">
                             <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-semibold text-blue-800">📝 Template Atual</h3>
+                                <h3 className="font-semibold text-blue-400">📝 Template Atual</h3>
                                 <button
                                     onClick={() => {
                                         const elem = document.getElementById('template-display');
@@ -331,12 +331,12 @@ ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alt
                                             elem.classList.toggle('max-h-full');
                                         }
                                     }}
-                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                    className="text-xs text-blue-400 hover:text-blue-300"
                                 >
                                     {imageTemplate.length > 200 ? 'Ver mais/menos' : ''}
                                 </button>
                             </div>
-                            <pre id="template-display" className="text-xs text-blue-900 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
+                            <pre id="template-display" className="text-xs text-blue-300 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
                                 {imageTemplate}
                             </pre>
                         </div>
@@ -354,17 +354,17 @@ ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alt
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.1 }}
-                                className="bg-white rounded-xl shadow-lg p-6"
+                                className="bg-card border border-border rounded-xl shadow-lg p-6"
                             >
-                                <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                                <h2 className="text-2xl font-bold text-foreground mb-4">
                                     📝 Cena {testScene.order}
                                 </h2>
 
                                 {/* Scene Info */}
                                 <div className="space-y-3 mb-4">
                                     <div>
-                                        <h3 className="font-semibold text-gray-700 text-sm mb-1">Descrição Visual:</h3>
-                                        <p className="text-gray-600 text-xs leading-relaxed bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                                        <h3 className="font-semibold text-muted-foreground text-sm mb-1">Descrição Visual:</h3>
+                                        <p className="text-muted-foreground text-xs leading-relaxed bg-muted p-2 rounded max-h-32 overflow-y-auto">
                                             {testScene.visual_description}
                                         </p>
                                     </div>
@@ -380,7 +380,7 @@ ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alt
                                 <button
                                     onClick={() => handleGeneratePrompt(index)}
                                     disabled={sceneState.isGeneratingPrompt}
-                                    className="w-full bg-[#FF0000] text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+                                    className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-semibold hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-3"
                                 >
                                     {sceneState.isGeneratingPrompt ? '⏳ Gerando...' : '🎨 Gerar Prompt'}
                                 </button>
@@ -402,7 +402,7 @@ ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alt
                                     <button
                                         onClick={() => handleGenerateImage(index)}
                                         disabled={sceneState.isGeneratingImage}
-                                        className="w-full bg-gray-900 text-white py-2 rounded-lg font-semibold hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+                                        className="w-full bg-secondary text-secondary-foreground py-2 rounded-lg font-semibold hover:bg-secondary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-3"
                                     >
                                         {sceneState.isGeneratingImage ? '⏳ Gerando...' : '🖼️ Gerar Imagem'}
                                     </button>
@@ -410,8 +410,8 @@ ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alt
 
                                 {/* Error Display */}
                                 {sceneState.error && (
-                                    <div className="p-2 bg-red-50 border border-red-200 rounded mb-3">
-                                        <p className="text-red-700 text-xs">❌ {sceneState.error}</p>
+                                    <div className="p-2 bg-destructive/10 border border-destructive/20 rounded mb-3">
+                                        <p className="text-destructive text-xs">❌ {sceneState.error}</p>
                                     </div>
                                 )}
 

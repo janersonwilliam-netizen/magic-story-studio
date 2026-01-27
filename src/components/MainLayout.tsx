@@ -50,7 +50,7 @@ export function MainLayout() {
 
     return (
         <div
-            className={`flex w-full h-full min-h-screen ${isEditorMode ? 'bg-[#0f0f0f] overflow-hidden' : 'bg-gray-50 overflow-auto'}`}
+            className={`flex w-full h-full min-h-screen ${isEditorMode ? 'bg-background overflow-hidden' : 'bg-background overflow-auto'}`}
             data-editor-mode={isEditorMode ? "true" : "false"}
         >
             {/* Hide sidebar and toggle button in editor mode */}
@@ -59,7 +59,7 @@ export function MainLayout() {
                     {/* Sidebar Toggle Button (Mobile) */}
                     <button
                         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className="fixed top-4 left-4 z-50 p-2 bg-[#272727] text-white rounded-lg lg:hidden hover:bg-[#3f3f3f] transition-colors"
+                        className="fixed top-4 left-4 z-50 p-2 bg-card text-foreground rounded-lg lg:hidden hover:bg-accent transition-colors"
                     >
                         {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
                     </button>
@@ -88,7 +88,7 @@ export function MainLayout() {
             )}
 
             {/* Main Content */}
-            <main className={`flex-1 w-full h-full ${isEditorMode ? 'bg-[#1a1a1a] p-0' : 'bg-gray-50 p-6 lg:p-8 overflow-auto'}`}>
+            <main className={`flex-1 w-full h-full ${isEditorMode ? 'bg-background p-0' : 'bg-background p-6 lg:p-8 overflow-auto'}`}>
                 <Outlet />
             </main>
         </div>

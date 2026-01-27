@@ -29,6 +29,8 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
     const [generating, setGenerating] = useState(false);
     const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
 
+    const hasStartedRef = React.useRef(false);
+
     useEffect(() => {
         // Initialize status for all scenes - CHECK if images already exist
         const initialStatus: Record<string, ImageGenerationStatus> = {};
@@ -53,10 +55,11 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
         });
         setGenerationStatus(initialStatus);
 
-        // Only auto-start if there are scenes without images
-        if (!hasAllImages) {
+        // Only auto-start if there are scenes without images AND we haven't started yet
+        if (!hasAllImages && !hasStartedRef.current) {
+            hasStartedRef.current = true;
             startGeneration();
-        } else {
+        } else if (hasAllImages) {
             console.log('[ImagesPage] All images already exist, skipping generation');
         }
     }, []);
@@ -470,14 +473,14 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl shadow-lg p-8"
+                className="bg-card rounded-2xl shadow-lg p-8 border border-border"
             >
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                    <h1 className="text-4xl font-bold text-foreground mb-2">
                         Oficina de Ilustração
                     </h1>
-                    <p className="text-gray-600">
+                    <p className="text-muted-foreground">
                         Gerando imagens mágicas para cada cena
                     </p>
                 </div>
@@ -485,16 +488,16 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 {/* Progress Bar */}
                 <div className="mb-8">
                     <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-gray-700">
+                        <span className="text-sm font-semibold text-foreground">
                             Progresso: {completedCount}/{totalScenes}
                         </span>
-                        <span className="text-sm text-gray-600">
+                        <span className="text-sm text-muted-foreground">
                             {Math.round(progress)}%
                         </span>
                     </div>
-                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="w-full h-3 bg-secondary rounded-full overflow-hidden">
                         <motion.div
-                            className="h-full bg-gradient-to-r from-[#FF0000] to-red-400"
+                            className="h-full bg-primary"
                             initial={{ width: 0 }}
                             animate={{ width: `${progress}%` }}
                             transition={{ duration: 0.5 }}
@@ -518,25 +521,25 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 transition={{ delay: index * 0.1 }}
-                                className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden border-2 border-gray-200 group"
+                                className="relative aspect-square bg-muted rounded-xl overflow-hidden border-2 border-border group"
                             >
                                 {/* Scene Number */}
-                                <div className="absolute top-2 left-2 w-8 h-8 bg-[#FF0000] text-white rounded-full flex items-center justify-center font-bold text-sm z-10">
+                                <div className="absolute top-2 left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm z-10">
                                     {scene.order}
                                 </div>
 
                                 {/* Pending State */}
                                 {status?.status === 'pending' && (
                                     <div className="w-full h-full flex items-center justify-center">
-                                        <ImageIcon className="w-12 h-12 text-gray-400" />
+                                        <ImageIcon className="w-12 h-12 text-muted-foreground/30" />
                                     </div>
                                 )}
 
                                 {/* Generating State */}
                                 {status?.status === 'generating' && (
-                                    <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50">
-                                        <Loader2 className="w-12 h-12 text-[#FF0000] animate-spin mb-2" />
-                                        <p className="text-xs text-gray-600">Gerando...</p>
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-secondary/30">
+                                        <Loader2 className="w-12 h-12 text-primary animate-spin mb-2" />
+                                        <p className="text-xs text-muted-foreground">Gerando...</p>
                                     </div>
                                 )}
 
@@ -569,7 +572,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                                                         e.stopPropagation();
                                                         retryScene(scene.id);
                                                     }}
-                                                    className="w-8 h-8 bg-white/90 hover:bg-white text-gray-700 hover:text-[#FF0000] rounded-full flex items-center justify-center shadow-lg transition-colors border border-gray-200"
+                                                    className="w-8 h-8 bg-card/90 hover:bg-card text-foreground hover:text-primary rounded-full flex items-center justify-center shadow-lg transition-colors border border-border"
                                                     title="Regenerar imagem"
                                                 >
                                                     <RefreshCw className="w-4 h-4" />
@@ -582,11 +585,11 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
 
                                 {/* Error State */}
                                 {status?.status === 'error' && (
-                                    <div className="w-full h-full flex flex-col items-center justify-center bg-red-50">
-                                        <AlertCircle className="w-12 h-12 text-red-500 mb-2" />
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-destructive/10">
+                                        <AlertCircle className="w-12 h-12 text-destructive mb-2" />
                                         <button
                                             onClick={() => retryScene(scene.id)}
-                                            className="text-xs px-2 py-1 bg-[#FF0000] text-white rounded hover:bg-red-600"
+                                            className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90"
                                         >
                                             Tentar Novamente
                                         </button>
@@ -618,14 +621,14 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                     <button
                         onClick={onBack}
                         disabled={generating}
-                        className="px-6 py-3 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-3 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         ← Voltar
                     </button>
                     <button
                         onClick={handleComplete}
                         disabled={!canProceed || generating}
-                        className="flex-1 px-6 py-3 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="flex-1 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                         {generating ? (
                             <>

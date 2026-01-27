@@ -186,24 +186,24 @@ TECHNICAL:
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="bg-white rounded-2xl shadow-lg p-8"
+                    className="bg-card rounded-2xl shadow-lg p-8 border border-border"
                 >
                     <div className="flex flex-col items-center justify-center py-20">
-                        <Loader2 className="w-16 h-16 text-[#FF0000] animate-spin mb-4" />
-                        <p className="text-lg text-gray-600 mb-2">Criando cenas e personagens...</p>
-                        <p className="text-sm text-gray-500">Isso pode levar alguns segundos</p>
+                        <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
+                        <p className="text-lg text-muted-foreground mb-2">Criando cenas e personagens...</p>
+                        <p className="text-sm text-muted-foreground/60">Isso pode levar alguns segundos</p>
                     </div>
                 </motion.div>
             )}
 
             {/* Error State */}
             {error && !loading && (
-                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6">
-                    <p className="text-red-800 font-semibold mb-2">Erro ao gerar cenas</p>
-                    <p className="text-red-600 text-sm mb-4">{error}</p>
+                <div className="bg-destructive/10 border-2 border-destructive/20 rounded-xl p-6">
+                    <p className="text-destructive font-semibold mb-2">Erro ao gerar cenas</p>
+                    <p className="text-destructive/80 text-sm mb-4">{error}</p>
                     <button
                         onClick={generateScenesAndCharacters}
-                        className="px-4 py-2 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors"
+                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                     >
                         Tentar Novamente
                     </button>
@@ -219,19 +219,19 @@ TECHNICAL:
                 >
                     {/* Header */}
                     <div className="text-center">
-                        <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                        <h1 className="text-4xl font-bold text-foreground mb-2">
                             Cenas e Personagens
                         </h1>
-                        <p className="text-gray-600">
+                        <p className="text-muted-foreground">
                             Confira o DNA visual do herói e as cenas geradas
                         </p>
                     </div>
 
                     {/* Character DNA Section - All Characters */}
                     {Object.keys(characters).length > 0 && (
-                        <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl shadow-lg p-6">
-                            <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                <Sparkles className="w-6 h-6 text-[#FF0000]" />
+                        <div className="bg-gradient-to-br from-primary/5 to-purple-500/5 rounded-2xl shadow-lg p-6 border border-primary/10">
+                            <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
+                                <Sparkles className="w-6 h-6 text-primary" />
                                 DNA Visual dos Personagens ({Object.keys(characters).length})
                             </h2>
 
@@ -243,17 +243,17 @@ TECHNICAL:
                                     const error = characterImageErrors[character.name];
 
                                     return (
-                                        <div key={character.name} className="bg-white rounded-xl p-4 shadow-md">
+                                        <div key={character.name} className="bg-card rounded-xl p-4 shadow-md border border-border">
                                             {/* Character Image/Avatar */}
                                             <div className="flex flex-col items-center mb-4">
                                                 {!hasImage ? (
                                                     <>
-                                                        <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center mb-3">
-                                                            <User className="w-12 h-12 text-white" />
+                                                        <div className="w-24 h-24 bg-gradient-to-br from-primary/40 to-purple-600/40 rounded-full flex items-center justify-center mb-3">
+                                                            <User className="w-12 h-12 text-foreground" />
                                                         </div>
-                                                        <h3 className="text-lg font-bold text-gray-900">{character.name}</h3>
-                                                        <p className="text-sm text-gray-600 mb-2">{character.species}</p>
-                                                        <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded-full mb-3">
+                                                        <h3 className="text-lg font-bold text-foreground">{character.name}</h3>
+                                                        <p className="text-sm text-muted-foreground mb-2">{character.species}</p>
+                                                        <span className="text-xs px-2 py-1 bg-purple-500/20 text-purple-300 rounded-full mb-3">
                                                             {character.status === 'protagonist' ? '⭐ Protagonista' : '👥 Coadjuvante'}
                                                         </span>
 
@@ -261,7 +261,7 @@ TECHNICAL:
                                                         <button
                                                             onClick={() => generateCharacterImage(character.name)}
                                                             disabled={isGenerating}
-                                                            className="w-full px-3 py-2 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                                                            className="w-full px-3 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
                                                         >
                                                             {isGenerating ? (
                                                                 <>
@@ -277,7 +277,7 @@ TECHNICAL:
                                                         </button>
 
                                                         {error && (
-                                                            <p className="text-xs text-red-600 mt-2">{error}</p>
+                                                            <p className="text-xs text-destructive mt-2">{error}</p>
                                                         )}
                                                     </>
                                                 ) : (
@@ -285,11 +285,11 @@ TECHNICAL:
                                                         <img
                                                             src={characterReferenceImages[character.name]}
                                                             alt={character.name}
-                                                            className="w-full h-48 object-cover rounded-lg mb-3 border-2 border-[#FF0000]"
+                                                            className="w-full h-48 object-cover rounded-lg mb-3 border-2 border-primary"
                                                         />
-                                                        <h3 className="text-lg font-bold text-gray-900">{character.name}</h3>
-                                                        <p className="text-xs text-green-600 mb-2">✓ Imagem de Referência</p>
-                                                        <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded-full mb-3">
+                                                        <h3 className="text-lg font-bold text-foreground">{character.name}</h3>
+                                                        <p className="text-xs text-green-500 mb-2">✓ Imagem de Referência</p>
+                                                        <span className="text-xs px-2 py-1 bg-purple-500/20 text-purple-300 rounded-full mb-3">
                                                             {character.status === 'protagonist' ? '⭐ Protagonista' : '👥 Coadjuvante'}
                                                         </span>
 
@@ -297,7 +297,7 @@ TECHNICAL:
                                                         <button
                                                             onClick={() => generateCharacterImage(character.name)}
                                                             disabled={isGenerating}
-                                                            className="w-full px-3 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50 text-sm"
+                                                            className="w-full px-3 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors disabled:opacity-50 text-sm"
                                                         >
                                                             {isGenerating ? 'Regenerando...' : '🔄 Regenerar'}
                                                         </button>
@@ -307,15 +307,15 @@ TECHNICAL:
 
                                             {/* Character Details */}
                                             <div className="space-y-2 text-sm">
-                                                <div className="bg-gray-50 rounded p-2">
-                                                    <p className="text-xs text-gray-600 mb-1">Espécie</p>
-                                                    <p className="font-semibold text-gray-900">{character.species}</p>
+                                                <div className="bg-muted/50 rounded p-2">
+                                                    <p className="text-xs text-muted-foreground mb-1">Espécie</p>
+                                                    <p className="font-semibold text-foreground">{character.species}</p>
                                                 </div>
-                                                <div className="bg-gray-50 rounded p-2">
-                                                    <p className="text-xs text-gray-600 mb-1">Cores</p>
+                                                <div className="bg-muted/50 rounded p-2">
+                                                    <p className="text-xs text-muted-foreground mb-1">Cores</p>
                                                     <div className="flex flex-wrap gap-1">
                                                         {character.mainColors.map((color, idx) => (
-                                                            <span key={idx} className="text-xs px-2 py-1 bg-white rounded-full border border-gray-200">
+                                                            <span key={idx} className="text-xs px-2 py-1 bg-background rounded-full border border-border text-foreground">
                                                                 {color}
                                                             </span>
                                                         ))}
@@ -330,30 +330,30 @@ TECHNICAL:
                     )}
 
                     {/* Scenes List */}
-                    <div className="bg-white rounded-2xl shadow-lg p-6">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                    <div className="bg-card rounded-2xl shadow-lg p-6 border border-border">
+                        <h2 className="text-2xl font-bold text-foreground mb-4">
                             Cenas Geradas ({scenes.length})
                         </h2>
 
-                        <div className="space-y-4 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300">
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-border">
                             {scenes.map((scene) => (
                                 <div
                                     key={scene.id}
-                                    className="bg-gray-50 rounded-xl p-4 border-2 border-gray-200 hover:border-[#FF0000] transition-colors"
+                                    className="bg-muted/30 rounded-xl p-4 border-2 border-border hover:border-primary transition-colors"
                                 >
                                     <div className="flex items-start gap-3">
-                                        <div className="flex-shrink-0 w-10 h-10 bg-[#FF0000] text-white rounded-full flex items-center justify-center font-bold">
+                                        <div className="flex-shrink-0 w-10 h-10 bg-primary/20 text-primary rounded-full flex items-center justify-center font-bold border border-primary/50">
                                             {scene.order}
                                         </div>
                                         <div className="flex-1">
-                                            <p className="text-gray-900 leading-relaxed mb-2">
+                                            <p className="text-foreground leading-relaxed mb-2">
                                                 {scene.narrationText}
                                             </p>
                                             <div className="flex gap-2 text-xs">
-                                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                                                <span className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded">
                                                     {scene.emotion}
                                                 </span>
-                                                <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded">
+                                                <span className="px-2 py-1 bg-secondary text-secondary-foreground rounded">
                                                     ~{scene.durationEstimate}s
                                                 </span>
                                             </div>
@@ -368,14 +368,14 @@ TECHNICAL:
                     <div className="flex gap-4">
                         <button
                             onClick={onBack}
-                            className="px-6 py-3 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
+                            className="px-6 py-3 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors font-semibold"
                         >
                             ← Voltar
                         </button>
                         <button
                             onClick={handleConfirm}
                             disabled={Object.keys(characterReferenceImages).length === 0}
-                            className="flex-1 px-6 py-3 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-1 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             title={Object.keys(characterReferenceImages).length === 0 ? 'Gere pelo menos uma imagem de personagem' : ''}
                         >
                             <Sparkles className="w-5 h-5" />

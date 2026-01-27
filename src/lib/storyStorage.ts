@@ -141,22 +141,55 @@ const supabaseStoryStorage = {
     },
 
     async saveStory(story: StoryProject): Promise<void> {
-        // Prepare data for Supabase
         const { data: { user } } = await supabase.auth.getUser();
-
         if (!user) throw new Error('Usuario deve estar logado para salvar na nuvem.');
 
+        let previewImageUrl = story.previewImage;
+
+        // 1. Upload Thumbnail to Storage (if Base64)
+        if (previewImageUrl && previewImageUrl.startsWith('data:image')) {
+            try {
+                const response = await fetch(previewImageUrl);
+                const blob = await response.blob();
+                const fileName = `${story.id}_thumbnail.png`;
+                const filePath = `${user.id}/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('thumbnails')
+                    .upload(filePath, blob, { upsert: true });
+
+                if (!uploadError) {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('thumbnails')
+                        .getPublicUrl(filePath);
+                    previewImageUrl = publicUrl;
+                }
+            } catch (err) {
+                console.warn('[storyStorage] Thumbnail upload failed:', err);
+            }
+        }
+
+        // 2. Prepare Metadata
+        const { config, story: storyData, storyWithScenes } = story.data;
+
+        // Construct DB Record with new columns
         const dbRecord = {
             id: story.id,
             user_id: user.id,
             title: story.title,
-            preview_image: story.previewImage,
+            preview_image: previewImageUrl,
             data: story.data,
             is_complete: story.isComplete,
             updated_at: new Date().toISOString(),
-            // Only set created_at on insert, but upsert handles specific logic better.
-            // For simplicity, we just pass what we have, but we don't want to overwrite created_at if it exists?
-            // Supabase upsert will update everything passed.
+            // Metadata columns
+            tone: config?.tone,
+            age_group: config?.ageGroup,
+            duration: config?.duration,
+            story_text: storyData?.storyText,
+            narration_text: storyData?.narrationText,
+            custom_instructions: config?.storyIdea,
+            character_descriptions: storyWithScenes?.characters, // Save characters JSON
+            // Note: full_audio_url is not in StudioState, so we don't overwrite it here
         };
 
         const { error } = await supabase
@@ -188,29 +221,69 @@ export const storyStorage = {
         }
     },
 
-    async getAllStories(): Promise<StoryProject[]> {
-        if (await this.isAuthenticated()) {
-            try {
-                return await supabaseStoryStorage.getAllStories();
-            } catch (err) {
-                console.warn('[storyStorage] Supabase failed, falling back to local storage:', err);
-                // Fallback to local storage if cloud fails
-                return localStoryStorage.getAllStories();
-            }
-        }
+    async getLocalStories(): Promise<StoryProject[]> {
         return localStoryStorage.getAllStories();
     },
 
-    async getStory(id: string): Promise<StoryProject | undefined> {
-        if (await this.isAuthenticated()) {
+    async getAllStories(): Promise<StoryProject[]> {
+        // 1. Always start local fetch immediately (fail-safe)
+        const localFetch = localStoryStorage.getAllStories();
+
+        // 2. Check auth
+        const isAuth = await this.isAuthenticated();
+
+        if (isAuth) {
             try {
-                return await supabaseStoryStorage.getStory(id);
+                // 3. Race Cloud vs Timeout (e.g. 5 seconds)
+                const cloudFetch = supabaseStoryStorage.getAllStories();
+
+                // Create a timeout promise that rejects
+                const timeout = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Cloud fetch timed out')), 5000)
+                );
+
+                // Wait for Cloud or Timeout
+                return await Promise.race([cloudFetch, timeout]);
+
             } catch (err) {
-                console.warn('[storyStorage] Supabase failed, falling back to local storage:', err);
-                return localStoryStorage.getStory(id);
+                console.warn('[storyStorage] Supabase failed or timed out, falling back to local storage:', err);
+                // Fallback to local storage which should be ready or nearly ready
+                return await localFetch;
             }
         }
+
+        return await localFetch;
+    },
+
+    async getLocalStory(id: string): Promise<StoryProject | undefined> {
         return localStoryStorage.getStory(id);
+    },
+
+    async getStory(id: string): Promise<StoryProject | undefined> {
+        // 1. Always start local fetch
+        const localFetch = localStoryStorage.getStory(id);
+
+        // 2. Check auth
+        const isAuth = await this.isAuthenticated();
+
+        if (isAuth) {
+            try {
+                // 3. Race Cloud vs Timeout
+                const cloudFetch = supabaseStoryStorage.getStory(id);
+
+                const timeout = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Cloud fetch timed out')), 5000)
+                );
+
+                return await Promise.race([cloudFetch, timeout]);
+
+            } catch (err) {
+                console.warn('[storyStorage] Supabase failed or timed out, falling back to local storage:', err);
+                return await localFetch;
+            }
+        }
+
+        return await localFetch;
     },
 
     async saveStory(story: StoryProject): Promise<void> {

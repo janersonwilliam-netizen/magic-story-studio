@@ -82,43 +82,57 @@ export function StudioIndex() {
     const loadStory = async (id: string) => {
         setIsLoading(true);
         try {
-            const story = await storyStorage.getStory(id);
-            if (story) {
-                console.log('[Studio] Loaded story:', story.title);
-
-                // Safety check: ensure data has a valid currentStep
-                const loadedData = story.data;
-                let finalStep = loadedData?.currentStep || 'CONFIG';
-
-                if (!loadedData || !loadedData.currentStep) {
-                    console.warn('[Studio] Story data is empty or missing currentStep. Defaulting to CONFIG.');
-                    setStudioState({ currentStep: 'CONFIG' });
-                    finalStep = 'CONFIG';
-                } else {
-                    // If a specific step was requested via URL, navigate to it (if valid)
-                    if (stepFromUrl) {
-                        const validSteps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
-                        const requestedStepIndex = validSteps.indexOf(stepFromUrl);
-                        const currentStepIndex = validSteps.indexOf(loadedData.currentStep);
-
-                        // Only allow navigation to steps that have been completed or current
-                        if (requestedStepIndex >= 0 && requestedStepIndex <= currentStepIndex) {
-                            console.log('[Studio] Navigating to requested step:', stepFromUrl);
-                            setStudioState({ ...loadedData, currentStep: stepFromUrl });
-                            finalStep = stepFromUrl;
-                        } else {
-                            setStudioState(loadedData);
-                        }
-                    } else {
-                        setStudioState(loadedData);
-                    }
-                }
-
+            // 1. Instant Load (Local)
+            const localStory = await storyStorage.getLocalStory(id);
+            if (localStory) {
+                console.log('[Studio] Loaded local story:', localStory.title);
+                processLoadedStory(localStory);
+                setIsLoading(false); // Show content immediately
             }
+
+            // 2. Background Sync (Cloud)
+            const syncedStory = await storyStorage.getStory(id);
+            if (syncedStory) {
+                // If we didn't have local data, or if cloud data is newer (logic can be improved, but for now just update)
+                console.log('[Studio] Standard loaded story:', syncedStory.title);
+                processLoadedStory(syncedStory);
+            } else if (!localStory) {
+                // Only if BOTH are missing
+                console.warn('[Studio] Story data is empty or missing currentStep. Defaulting to CONFIG.');
+                setStudioState({ currentStep: 'CONFIG' });
+            }
+
         } catch (error) {
             console.error('[Studio] Error loading story:', error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const processLoadedStory = (story: StoryProject) => {
+        // Safety check: ensure data has a valid currentStep
+        const loadedData = story.data;
+        let finalStep = loadedData?.currentStep || 'CONFIG';
+
+        if (!loadedData || !loadedData.currentStep) {
+            setStudioState({ currentStep: 'CONFIG' });
+        } else {
+            // If a specific step was requested via URL, navigate to it (if valid)
+            if (stepFromUrl) {
+                const validSteps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
+                const requestedStepIndex = validSteps.indexOf(stepFromUrl);
+                const currentStepIndex = validSteps.indexOf(loadedData.currentStep);
+
+                // Only allow navigation to steps that have been completed or current
+                if (requestedStepIndex >= 0 && requestedStepIndex <= currentStepIndex) {
+                    console.log('[Studio] Navigating to requested step:', stepFromUrl);
+                    setStudioState({ ...loadedData, currentStep: stepFromUrl });
+                } else {
+                    setStudioState(loadedData);
+                }
+            } else {
+                setStudioState(loadedData);
+            }
         }
     };
 
@@ -247,10 +261,10 @@ export function StudioIndex() {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-white flex items-center justify-center">
+            <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center">
-                    <Loader2 className="w-10 h-10 text-red-600 animate-spin mx-auto mb-4" />
-                    <p className="text-gray-600">Carregando história...</p>
+                    <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
+                    <p className="text-muted-foreground">Carregando história...</p>
                 </div>
             </div>
         );
@@ -282,12 +296,12 @@ export function StudioIndex() {
     const showStepNavigation = studioState.currentStep !== 'TIMELINE' && studioState.currentStep !== 'EDITOR';
 
     return (
-        <div className={`min-h-screen ${studioState.currentStep === 'TIMELINE' ? 'bg-[#1a1a1a] overflow-hidden' : 'bg-[#FAFAFA] overflow-auto'} pb-20`}>
+        <div className={`min-h-screen ${studioState.currentStep === 'TIMELINE' ? 'bg-background overflow-hidden' : 'bg-background overflow-auto'} pb-20`}>
 
             {/* Step Navigation Header - Aligned with content */}
             {showStepNavigation && (
                 <div className="container mx-auto px-4 pt-6 pb-2">
-                    <div className="bg-white rounded-2xl shadow-lg border border-gray-200 px-8 py-4 flex justify-center">
+                    <div className="bg-card rounded-2xl shadow-lg border border-border px-8 py-4 flex justify-center">
                         <div className="flex items-center gap-4">
                             {allSteps.map((step, index) => {
                                 const isActive = step.key === studioState.currentStep;
@@ -300,25 +314,25 @@ export function StudioIndex() {
                                         onClick={() => isAccessible && goToStep(step.key)}
                                         disabled={!isAccessible}
                                         className={`flex flex-col items-center px-5 py-2 rounded-xl transition-all ${isActive
-                                            ? 'bg-[#FF0000]/10'
+                                            ? 'bg-primary/10'
                                             : isAccessible
-                                                ? 'hover:bg-gray-100 cursor-pointer'
+                                                ? 'hover:bg-muted cursor-pointer'
                                                 : 'cursor-not-allowed opacity-50'
                                             }`}
                                     >
                                         {/* Progress bar */}
                                         <div className={`w-20 h-1 rounded-full mb-2 ${isActive
-                                            ? 'bg-[#FF0000]'
+                                            ? 'bg-primary'
                                             : isCompleted
-                                                ? 'bg-[#FF0000]'
-                                                : 'bg-gray-300'
+                                                ? 'bg-primary'
+                                                : 'bg-muted'
                                             }`} />
                                         {/* Label */}
                                         <span className={`text-[11px] font-bold uppercase tracking-wide ${isActive
-                                            ? 'text-[#FF0000]'
+                                            ? 'text-primary'
                                             : isCompleted
-                                                ? 'text-[#FF0000]'
-                                                : 'text-gray-400'
+                                                ? 'text-primary'
+                                                : 'text-muted-foreground'
                                             }`}>
                                             {step.label}
                                         </span>
@@ -396,9 +410,9 @@ export function StudioIndex() {
 
             {/* Global Saving Indicator */}
             {isSaving && (
-                <div className="fixed bottom-6 right-6 bg-white shadow-xl border border-gray-100 rounded-full px-5 py-3 flex items-center gap-3 text-sm font-medium z-50 animate-in slide-in-from-bottom-5 fade-in">
-                    <Loader2 className="w-4 h-4 animate-spin text-green-600" />
-                    <span className="text-gray-600">Salvando progresso...</span>
+                <div className="fixed bottom-6 right-6 bg-card shadow-xl border border-border rounded-full px-5 py-3 flex items-center gap-3 text-sm font-medium z-50 animate-in slide-in-from-bottom-5 fade-in">
+                    <Loader2 className="w-4 h-4 animate-spin text-green-500" />
+                    <span className="text-foreground">Salvando progresso...</span>
                 </div>
             )}
         </div>

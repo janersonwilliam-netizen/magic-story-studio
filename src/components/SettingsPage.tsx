@@ -105,7 +105,7 @@ export function SettingsPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-[#FF0000]" />
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         );
     }
@@ -123,7 +123,7 @@ export function SettingsPage() {
 
                 {/* Error Message */}
                 {error && (
-                    <div className="bg-red-50 text-red-600 p-4 rounded-lg">
+                    <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
                         {error}
                     </div>
                 )}
@@ -133,7 +133,7 @@ export function SettingsPage() {
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-green-50 text-green-600 p-4 rounded-lg flex items-center gap-2"
+                        className="bg-green-500/10 text-green-500 p-4 rounded-lg flex items-center gap-2"
                     >
                         <Check className="h-5 w-5" />
                         Perfil atualizado com sucesso!
@@ -144,7 +144,7 @@ export function SettingsPage() {
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-green-50 text-green-600 p-4 rounded-lg flex items-center gap-2"
+                        className="bg-green-500/10 text-green-500 p-4 rounded-lg flex items-center gap-2"
                     >
                         <Check className="h-5 w-5" />
                         Senha alterada com sucesso!
@@ -155,10 +155,10 @@ export function SettingsPage() {
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-white rounded-xl border shadow-sm p-8 space-y-6"
+                    className="bg-card rounded-xl border border-border shadow-sm p-8 space-y-6"
                 >
                     <div className="flex items-center gap-3 mb-4">
-                        <User className="h-6 w-6 text-[#FF0000]" />
+                        <User className="h-6 w-6 text-primary" />
                         <h2 className="text-xl font-bold">Perfil</h2>
                     </div>
 
@@ -169,7 +169,7 @@ export function SettingsPage() {
                             type="email"
                             value={user?.email || ''}
                             disabled
-                            className="w-full px-4 py-2 border rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                            className="w-full px-4 py-2 border border-border rounded-lg bg-muted text-muted-foreground cursor-not-allowed"
                         />
                         <p className="text-xs text-muted-foreground">
                             O email não pode ser alterado
@@ -183,7 +183,7 @@ export function SettingsPage() {
                             type="text"
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
-                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
+                            className="w-full px-4 py-2 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                             placeholder="Como você quer ser chamado?"
                         />
                     </div>
@@ -192,7 +192,7 @@ export function SettingsPage() {
                     <button
                         onClick={handleSaveProfile}
                         disabled={saving}
-                        className="w-full px-6 py-3 bg-[#FF0000] text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                         {saving ? (
                             <>
@@ -213,10 +213,10 @@ export function SettingsPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="bg-white rounded-xl border shadow-sm p-8 space-y-6"
+                    className="bg-card rounded-xl border border-border shadow-sm p-8 space-y-6"
                 >
                     <div className="flex items-center gap-3 mb-4">
-                        <Lock className="h-6 w-6 text-[#FF0000]" />
+                        <Lock className="h-6 w-6 text-primary" />
                         <h2 className="text-xl font-bold">Segurança</h2>
                     </div>
 
@@ -227,7 +227,7 @@ export function SettingsPage() {
                             type="password"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
+                            className="w-full px-4 py-2 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                             placeholder="Mínimo 6 caracteres"
                         />
                     </div>
@@ -239,7 +239,7 @@ export function SettingsPage() {
                             type="password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
+                            className="w-full px-4 py-2 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                             placeholder="Digite a senha novamente"
                         />
                     </div>
@@ -248,7 +248,7 @@ export function SettingsPage() {
                     <button
                         onClick={handleChangePassword}
                         disabled={changingPassword || !newPassword || !confirmPassword}
-                        className="w-full px-6 py-3 bg-[#FF0000] text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                         {changingPassword ? (
                             <>

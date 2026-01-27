@@ -105,14 +105,14 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl shadow-lg p-8"
+                className="bg-card rounded-2xl shadow-lg p-8 border border-border"
             >
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                    <h1 className="text-4xl font-bold text-foreground mb-2">
                         Seu Conto foi Escrito!
                     </h1>
-                    <p className="text-gray-600">
+                    <p className="text-muted-foreground">
                         Leia a história completa abaixo
                     </p>
                 </div>
@@ -120,20 +120,20 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                 {/* Loading State */}
                 {generating && (
                     <div className="flex flex-col items-center justify-center py-20">
-                        <Loader2 className="w-16 h-16 text-[#FF0000] animate-spin mb-4" />
-                        <p className="text-lg text-gray-600 mb-2">Gerando sua história mágica...</p>
-                        <p className="text-sm text-gray-500">Isso pode levar alguns segundos</p>
+                        <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
+                        <p className="text-lg text-muted-foreground mb-2">Gerando sua história mágica...</p>
+                        <p className="text-sm text-muted-foreground/60">Isso pode levar alguns segundos</p>
                     </div>
                 )}
 
                 {/* Error State */}
                 {error && !generating && (
-                    <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6">
-                        <p className="text-red-800 font-semibold mb-2">Erro ao gerar história</p>
-                        <p className="text-red-600 text-sm mb-4">{error}</p>
+                    <div className="bg-destructive/10 border-2 border-destructive/20 rounded-xl p-6 mb-6">
+                        <p className="text-destructive font-semibold mb-2">Erro ao gerar história</p>
+                        <p className="text-destructive/80 text-sm mb-4">{error}</p>
                         <button
                             onClick={generateStory}
-                            className="px-4 py-2 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors"
+                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                         >
                             Tentar Novamente
                         </button>
@@ -148,40 +148,40 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                         transition={{ delay: 0.2 }}
                     >
                         {/* Story Info */}
-                        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 mb-6">
+                        <div className="bg-gradient-to-r from-primary/5 to-purple-500/5 rounded-xl p-4 mb-6 border border-primary/10">
                             <div className="flex items-center gap-4 text-sm">
                                 <div className="flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-[#FF0000]" />
-                                    <span className="font-semibold text-gray-700">Título:</span>
-                                    <span className="text-gray-900">{config.title}</span>
+                                    <Sparkles className="w-4 h-4 text-primary" />
+                                    <span className="font-semibold text-muted-foreground">Título:</span>
+                                    <span className="text-foreground">{config.title}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-gray-700">Duração:</span>
-                                    <span className="text-gray-900">{config.duration} min</span>
+                                    <span className="font-semibold text-muted-foreground">Duração:</span>
+                                    <span className="text-foreground">{config.duration} min</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-gray-700">Estilo:</span>
-                                    <span className="text-gray-900">{config.visualStyle}</span>
+                                    <span className="font-semibold text-muted-foreground">Estilo:</span>
+                                    <span className="text-foreground">{config.visualStyle}</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Story Content */}
-                        <div className="bg-gray-50 rounded-xl p-6 mb-6 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300">
-                            <div className="prose prose-lg max-w-none">
-                                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                        <div className="bg-muted/30 rounded-xl p-6 mb-6 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-border">
+                            <div className="prose prose-lg max-w-none prose-invert">
+                                <p className="text-foreground leading-relaxed whitespace-pre-wrap">
                                     {storyText}
                                 </p>
                             </div>
                         </div>
 
                         {/* Voice and Emotion Selection */}
-                        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6 mb-6">
-                            <h3 className="text-lg font-bold text-gray-900 mb-4">🎙️ Configurações de Narração</h3>
+                        <div className="bg-gradient-to-r from-primary/5 to-purple-500/5 rounded-xl p-6 mb-6 border border-primary/10">
+                            <h3 className="text-lg font-bold text-foreground mb-4">🎙️ Configurações de Narração</h3>
 
                             {/* Voice Selection */}
                             <div className="mb-4">
-                                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                                <label className="block text-sm font-semibold text-muted-foreground mb-3">
                                     VOZ DA NARRAÇÃO
                                 </label>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -197,8 +197,8 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                                             type="button"
                                             onClick={() => setVoiceName(voice.value)}
                                             className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${voiceName === voice.value
-                                                ? 'bg-[#FF0000] text-white shadow-lg scale-105'
-                                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                                ? 'bg-primary text-primary-foreground shadow-lg scale-105'
+                                                : 'bg-card text-muted-foreground hover:bg-secondary border border-border'
                                                 }`}
                                         >
                                             <span className="text-lg">{voice.icon}</span>
@@ -210,7 +210,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
 
                             {/* Emotion Selection */}
                             <div className="mb-4">
-                                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                                <label className="block text-sm font-semibold text-muted-foreground mb-3">
                                     EMOÇÃO DA NARRAÇÃO
                                 </label>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -227,8 +227,8 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                                             type="button"
                                             onClick={() => setEmotion(emotionOption.value)}
                                             className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${emotion === emotionOption.value
-                                                ? 'bg-[#FF0000] text-white shadow-lg scale-105'
-                                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                                ? 'bg-primary text-primary-foreground shadow-lg scale-105'
+                                                : 'bg-card text-muted-foreground hover:bg-secondary border border-border'
                                                 }`}
                                         >
                                             <span className="text-lg">{emotionOption.icon}</span>
@@ -242,7 +242,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                             <button
                                 onClick={handleGenerateAudioPreview}
                                 disabled={generatingAudio}
-                                className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold flex items-center justify-center gap-2 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                className="w-full py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-semibold flex items-center justify-center gap-2 disabled:bg-muted disabled:cursor-not-allowed"
                             >
                                 {generatingAudio ? (
                                     <>
@@ -259,8 +259,8 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
 
                             {/* Audio Player */}
                             {audioPreviewUrl && (
-                                <div className="mt-4 p-4 bg-white rounded-lg border-2 border-purple-200">
-                                    <p className="text-sm font-semibold text-gray-700 mb-2">Preview do Áudio:</p>
+                                <div className="mt-4 p-4 bg-card rounded-lg border-2 border-primary/20">
+                                    <p className="text-sm font-semibold text-muted-foreground mb-2">Preview do Áudio:</p>
                                     <audio controls className="w-full">
                                         <source src={audioPreviewUrl} type="audio/wav" />
                                     </audio>
@@ -272,13 +272,13 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                         <div className="flex gap-4">
                             <button
                                 onClick={onBack}
-                                className="px-6 py-3 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
+                                className="px-6 py-3 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors font-semibold"
                             >
                                 ← Voltar
                             </button>
                             <button
                                 onClick={handleConfirm}
-                                className="flex-1 px-6 py-3 bg-[#FF0000] text-white rounded-lg hover:bg-red-600 transition-colors font-semibold flex items-center justify-center gap-2"
+                                className="flex-1 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-semibold flex items-center justify-center gap-2"
                             >
                                 <Check className="w-5 h-5" />
                                 CONFIRMAR CENAS

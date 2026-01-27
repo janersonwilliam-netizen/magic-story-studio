@@ -28,7 +28,7 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
 
     return (
         <motion.aside
-            className="h-full bg-[#0f0f0f] z-40 flex flex-col overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500"
+            className="h-full bg-background border-r border-border z-40 flex flex-col overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500"
             initial={false}
             animate={{ width: isOpen ? '240px' : '72px' }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -46,12 +46,12 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
                                 key={item.id}
                                 onClick={() => onNavigate(item.id)}
                                 className={`w-full flex items-center gap-5 px-3 py-3 rounded-lg transition-colors ${active
-                                    ? 'bg-[#272727] font-medium text-white'
-                                    : 'hover:bg-[#272727] text-gray-300 hover:text-white'
+                                    ? 'bg-secondary font-medium text-white'
+                                    : 'hover:bg-secondary/80 text-gray-300 hover:text-white'
                                     }`}
                                 title={!isOpen ? item.label : ''}
                             >
-                                <Icon className={`h-6 w-6 flex-shrink-0 ${active ? 'text-[#FF0000]' : 'text-white'}`} strokeWidth={active ? 2.5 : 2} />
+                                <Icon className={`h-6 w-6 flex-shrink-0 ${active ? 'text-primary' : 'text-white'}`} strokeWidth={active ? 2.5 : 2} />
                                 <span className={`whitespace-nowrap overflow-hidden text-sm ${isOpen ? 'opacity-100' : 'opacity-0 hidden'} ${active ? 'font-semibold' : ''}`}>
                                     {item.label}
                                 </span>
@@ -60,7 +60,7 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
                     })}
                 </div>
 
-                {isOpen && <div className="border-t border-[#3f3f3f] mx-1" />}
+                {isOpen && <div className="border-t border-border mx-1" />}
 
                 {/* Secondary Section */}
                 <div className="space-y-1">
@@ -77,12 +77,12 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
                                 key={item.id}
                                 onClick={() => onNavigate(item.id)}
                                 className={`w-full flex items-center gap-5 px-3 py-3 rounded-lg transition-colors ${active
-                                    ? 'bg-[#272727] font-medium text-white'
-                                    : 'hover:bg-[#272727] text-gray-300 hover:text-white'
+                                    ? 'bg-secondary font-medium text-white'
+                                    : 'hover:bg-secondary/80 text-gray-300 hover:text-white'
                                     }`}
                                 title={!isOpen ? item.label : ''}
                             >
-                                <Icon className={`h-6 w-6 flex-shrink-0 ${active ? 'text-[#FF0000]' : 'text-white'}`} />
+                                <Icon className={`h-6 w-6 flex-shrink-0 ${active ? 'text-primary' : 'text-white'}`} />
                                 <span className={`whitespace-nowrap overflow-hidden text-sm ${isOpen ? 'opacity-100' : 'opacity-0 hidden'} ${active ? 'font-semibold' : ''}`}>
                                     {item.label}
                                 </span>
@@ -93,10 +93,10 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
             </div>
 
             {/* Footer / Sign Out */}
-            <div className="p-3 mt-auto border-t border-[#3f3f3f]">
+            <div className="p-3 mt-auto border-t border-border">
                 <button
                     onClick={signOut}
-                    className="w-full flex items-center gap-5 px-3 py-3 rounded-lg hover:bg-[#272727] text-white transition-colors"
+                    className="w-full flex items-center gap-5 px-3 py-3 rounded-lg hover:bg-secondary/80 text-white transition-colors"
                     title={!isOpen ? 'Sair' : ''}
                 >
                     <LogOut className="h-6 w-6 flex-shrink-0" />

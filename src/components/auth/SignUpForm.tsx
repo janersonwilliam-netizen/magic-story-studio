@@ -53,7 +53,7 @@ export function SignUpForm() {
                 className="w-full max-w-md"
             >
                 <div className="bg-card rounded-xl border shadow-sm p-8 text-center">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
                         <User className="h-8 w-8 text-green-600" />
                     </div>
                     <h2 className="text-2xl font-bold mb-2">Conta criada com sucesso!</h2>
@@ -98,7 +98,7 @@ export function SignUpForm() {
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="w-full pl-10 pr-4 py-2 bg-background text-foreground border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="seu@email.com"
                                 required
                                 disabled={loading}
@@ -117,7 +117,7 @@ export function SignUpForm() {
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="w-full pl-10 pr-4 py-2 bg-background text-foreground border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="••••••••"
                                 required
                                 disabled={loading}
@@ -138,7 +138,7 @@ export function SignUpForm() {
                                 type="password"
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="w-full pl-10 pr-4 py-2 bg-background text-foreground border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="••••••••"
                                 required
                                 disabled={loading}

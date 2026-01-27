@@ -154,7 +154,7 @@ export function PromptMasterPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-[#FF0000]" />
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         );
     }
@@ -172,7 +172,7 @@ export function PromptMasterPage() {
 
                 {/* Error Message */}
                 {error && (
-                    <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
+                    <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-6">
                         {error}
                     </div>
                 )}
@@ -182,7 +182,7 @@ export function PromptMasterPage() {
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-green-50 text-green-600 p-4 rounded-lg mb-6 flex items-center gap-2"
+                        className="bg-green-500/10 text-green-500 p-4 rounded-lg mb-6 flex items-center gap-2"
                     >
                         <Check className="h-5 w-5" />
                         Salvo com sucesso!
@@ -193,7 +193,7 @@ export function PromptMasterPage() {
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-white rounded-xl border shadow-sm p-8 space-y-6"
+                    className="bg-card rounded-xl border border-border shadow-sm p-8 space-y-6"
                 >
                     {/* Description */}
                     <div className="space-y-2">
@@ -203,7 +203,7 @@ export function PromptMasterPage() {
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000] min-h-[100px] resize-y"
+                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[100px] resize-y"
                             placeholder="Breve descrição do que o sistema faz..."
                         />
                         <p className="text-xs text-muted-foreground">
@@ -219,7 +219,7 @@ export function PromptMasterPage() {
                         <textarea
                             value={instructions}
                             onChange={(e) => setInstructions(e.target.value)}
-                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000] min-h-[300px] resize-y font-mono text-sm"
+                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[300px] resize-y font-mono text-sm"
                             placeholder="Instruções detalhadas para a IA..."
                         />
                         <p className="text-xs text-muted-foreground">
@@ -235,7 +235,7 @@ export function PromptMasterPage() {
                         <textarea
                             value={imageTemplate}
                             onChange={(e) => setImageTemplate(e.target.value)}
-                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000] min-h-[300px] resize-y font-mono text-sm"
+                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[300px] resize-y font-mono text-sm"
                             placeholder="Template base para geração de imagens das cenas..."
                         />
                         <p className="text-xs text-muted-foreground">
@@ -254,7 +254,7 @@ export function PromptMasterPage() {
                         <textarea
                             value={characterSheet}
                             onChange={(e) => setCharacterSheet(e.target.value)}
-                            className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0000] min-h-[400px] resize-y font-mono text-sm"
+                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[400px] resize-y font-mono text-sm"
                             placeholder="Template para Character Sheet..."
                         />
                         <p className="text-xs text-muted-foreground">
@@ -266,7 +266,7 @@ export function PromptMasterPage() {
                     <div className="flex gap-3 pt-4">
                         <button
                             onClick={handleReset}
-                            className="px-6 py-3 border rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+                            className="px-6 py-3 border border-border rounded-lg font-medium hover:bg-secondary/80 text-foreground transition-colors flex items-center gap-2"
                         >
                             <RotateCcw className="h-4 w-4" />
                             Restaurar Padrão
@@ -274,7 +274,7 @@ export function PromptMasterPage() {
                         <button
                             onClick={handleSave}
                             disabled={saving}
-                            className="flex-1 px-6 py-3 bg-[#FF0000] text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="flex-1 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {saving ? (
                                 <>

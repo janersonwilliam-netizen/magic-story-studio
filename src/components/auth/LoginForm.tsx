@@ -58,7 +58,7 @@ export function LoginForm() {
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="w-full pl-10 pr-4 py-2 bg-background text-foreground border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="seu@email.com"
                                 required
                                 disabled={loading}
@@ -77,7 +77,7 @@ export function LoginForm() {
                                 type={showPassword ? "text" : "password"}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-10 pr-10 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="w-full pl-10 pr-10 py-2 bg-background text-foreground border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                 placeholder="••••••••"
                                 required
                                 disabled={loading}
