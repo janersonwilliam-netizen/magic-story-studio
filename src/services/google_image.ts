@@ -252,9 +252,15 @@ export async function generateImageWithNanoBanana(prompt: string): Promise<strin
         // The @google/genai SDK returns candidates directly in the result
         const response = result;
 
-        // Try to get the image from the response
+        // Check for safety issues in candidates
         if (response.candidates && response.candidates.length > 0) {
             const candidate = response.candidates[0];
+
+            // Check finish reason
+            if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION' || candidate.finishReason === 'OTHER') {
+                console.error(`[Gemini Image] Generation blocked. Reason: ${candidate.finishReason}`, candidate.safetyRatings);
+                throw new Error(`Imagem bloqueada. Motivo: ${candidate.finishReason}. Tente outro prompt.`);
+            }
 
             if (candidate.content && candidate.content.parts) {
                 for (const part of candidate.content.parts) {
@@ -278,11 +284,23 @@ export async function generateImageWithNanoBanana(prompt: string): Promise<strin
         }
 
         // If we get here, Gemini didn't return an image
-        console.error('[Gemini Image] No image data found in response');
-        throw new Error('O Gemini não retornou uma imagem. O modelo de geração de imagens pode não estar disponível para sua API Key.');
+        console.error('[Gemini Image] No image data found in response', response);
+        const feedback = (response as any).promptFeedback;
+        if (feedback) {
+            console.error('[Gemini Image] Prompt Feedback:', feedback);
+            if (feedback.blockReason) {
+                throw new Error(`Geração bloqueada. Motivo: ${feedback.blockReason}`);
+            }
+        }
+
+        throw new Error('O Gemini não retornou uma imagem. Verifique se sua API Key tem permissão para o modelo e se não há restrições de segurança.');
 
     } catch (error: any) {
         console.error('[Gemini Image] Error:', error);
+        // Don't wrap if it's already an Error object we created
+        if (error.message && (error.message.includes('bloqueada') || error.message.includes('API Key'))) {
+            throw error;
+        }
         throw new Error(`Erro ao gerar imagem com Gemini: ${error.message}`);
     }
 }
