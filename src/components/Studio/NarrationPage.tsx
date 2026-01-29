@@ -22,7 +22,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
     const [generating, setGenerating] = useState(!existingStory?.storyText);
     const [storyText, setStoryText] = useState(existingStory?.storyText || '');
     const [error, setError] = useState('');
-    const [voiceName, setVoiceName] = useState(existingStory?.voiceName || 'Puck');
+    const [voiceName, setVoiceName] = useState(existingStory?.voiceName || 'pt-BR-Neural2-A');
     const [emotion, setEmotion] = useState(existingStory?.emotion || 'warmly');
     const [generatingAudio, setGeneratingAudio] = useState(false);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState('');
@@ -128,14 +128,18 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
 
                 {/* Error State */}
                 {error && !generating && (
-                    <div className="bg-destructive/10 border-2 border-destructive/20 rounded-xl p-6 mb-6">
-                        <p className="text-destructive font-semibold mb-2">Erro ao gerar história</p>
-                        <p className="text-destructive/80 text-sm mb-4">{error}</p>
+                    <div className="bg-red-950/40 border-2 border-red-500/50 rounded-xl p-6 mb-6">
+                        <p className="text-red-200 font-bold mb-2 flex items-center gap-2 text-lg">
+                            ⚠️ Erro ao gerar história
+                        </p>
+                        <p className="text-red-100/90 text-sm mb-4 bg-black/40 p-4 rounded-lg font-mono break-all border border-red-500/20">
+                            {error}
+                        </p>
                         <button
                             onClick={generateStory}
-                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                            className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all font-bold shadow-lg flex items-center gap-2"
                         >
-                            Tentar Novamente
+                            🔄 Tentar Novamente
                         </button>
                     </div>
                 )}
@@ -185,19 +189,42 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                                     VOZ DA NARRAÇÃO
                                 </label>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {/* Google Cloud Voices */}
+                                    <div className="col-span-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1">Google Cloud (Alta Qualidade)</div>
                                     {[
-                                        { value: 'Puck', label: 'Infantil/Jovem', icon: '👶' },
-                                        { value: 'Kore', label: 'Feminina (Padrão)', icon: '👩' },
-                                        { value: 'Aoede', label: 'Feminina (Suave)', icon: '🎵' },
-                                        { value: 'Charon', label: 'Masculina (Padrão)', icon: '👨' },
-                                        { value: 'Fenrir', label: 'Masculina (Profunda)', icon: '🎙️' },
+                                        { value: 'pt-BR-Neural2-A', label: 'Feminina (Realista)', icon: '👩✨' },
+                                        { value: 'pt-BR-Neural2-B', label: 'Masculina (Realista)', icon: '👨✨' },
+                                        { value: 'pt-BR-Neural2-C', label: 'Feminina (Suave)', icon: '👱‍♀️' },
+                                        { value: 'pt-BR-Wavenet-A', label: 'Feminina (Natural)', icon: '👩' },
+                                        { value: 'pt-BR-Wavenet-B', label: 'Masculina (Natural)', icon: '👨' },
                                     ].map((voice) => (
                                         <button
                                             key={voice.value}
                                             type="button"
                                             onClick={() => setVoiceName(voice.value)}
                                             className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${voiceName === voice.value
-                                                ? 'bg-primary text-primary-foreground shadow-lg scale-105'
+                                                ? 'bg-blue-600 text-white shadow-lg scale-105'
+                                                : 'bg-card text-muted-foreground hover:bg-secondary border border-border'
+                                                }`}
+                                        >
+                                            <span className="text-lg">{voice.icon}</span>
+                                            <span>{voice.label}</span>
+                                        </button>
+                                    ))}
+
+                                    {/* Gemini Voices */}
+                                    <div className="col-span-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-1">Gemini AI (Limitado)</div>
+                                    {[
+                                        { value: 'Puck', label: 'Infantil/Jovem', icon: '👶' },
+                                        { value: 'Kore', label: 'Feminina (AI)', icon: '👩' },
+                                        { value: 'Charon', label: 'Masculina (AI)', icon: '👨' },
+                                    ].map((voice) => (
+                                        <button
+                                            key={voice.value}
+                                            type="button"
+                                            onClick={() => setVoiceName(voice.value)}
+                                            className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${voiceName === voice.value
+                                                ? 'bg-purple-600 text-white shadow-lg scale-105'
                                                 : 'bg-card text-muted-foreground hover:bg-secondary border border-border'
                                                 }`}
                                         >

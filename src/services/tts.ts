@@ -19,61 +19,80 @@ export interface GenerateAudioParams {
     pitch?: number; // Not directly supported, but can be adjusted via prompt
 }
 
+export type TTSProvider = 'gemini' | 'google-cloud';
+
 /**
  * Available Gemini TTS voices
- * These are the prebuilt voices available in Gemini TTS
  */
 export const GEMINI_VOICES = {
-    'Kore': 'Feminina (Padrão)',
-    'Charon': 'Masculina (Padrão)',
-    'Aoede': 'Feminina (Suave)',
-    'Fenrir': 'Masculina (Profunda)',
-    'Puck': 'Infantil/Jovem',
+    'Kore': 'Gemini - Feminina (Padrão)',
+    'Charon': 'Gemini - Masculina (Padrão)',
+    'Aoede': 'Gemini - Feminina (Suave)',
+    'Fenrir': 'Gemini - Masculina (Profunda)',
+    'Puck': 'Gemini - Infantil/Jovem',
+} as const;
+
+/**
+ * Available Google Cloud TTS voices (Standard = Free Tier Friendly)
+ */
+export const GOOGLE_VOICES = {
+    'pt-BR-Standard-A': 'Google - Feminina (Padrão)',
+    'pt-BR-Standard-B': 'Google - Masculina (Padrão)',
+    'pt-BR-Wavenet-A': 'Google - Feminina (WaveNet)',
+    'pt-BR-Wavenet-B': 'Google - Masculina (WaveNet)',
+    'pt-BR-Neural2-A': 'Google - Feminina (Neural)',
+    'pt-BR-Neural2-B': 'Google - Masculina (Neural)',
 } as const;
 
 export type GeminiVoiceOption = keyof typeof GEMINI_VOICES;
+export type GoogleVoiceOption = keyof typeof GOOGLE_VOICES;
 
-// Legacy compatibility - map old voice names to new ones
-export const PORTUGUESE_VOICES = {
-    'pt-BR-Wavenet-A': 'Feminina (Alta Qualidade)',
-    'pt-BR-Standard-A': 'Feminina (Padrão)',
-    'pt-BR-Neural2-A': 'Feminina (Neural)',
-    'pt-BR-Wavenet-B': 'Masculina (Narrador Profundo)',
-    'pt-BR-Standard-B': 'Masculina (Padrão)',
-    'pt-BR-Neural2-B': 'Masculina (Neural)',
-} as const;
 
-export type VoiceOption = keyof typeof PORTUGUESE_VOICES;
+import { generateGoogleCloudAudio } from './google_tts';
 
 /**
- * Generate audio narration using Gemini TTS API
- * Returns a base64-encoded audio data URL (WAV format)
+ * Generate audio narration using selected provider
  */
 export async function generateAudioNarration(params: GenerateAudioParams): Promise<string> {
-    if (!apiKey) {
-        throw new Error('Gemini API key not configured');
+    const {
+        text,
+        emotion = 'warmly',
+        voiceName = 'pt-BR-Standard-A',
+    } = params;
+
+    console.log('[TTS] Generating audio with voice:', voiceName);
+
+    // Determine provider based on voice name
+    const isGemini = Object.keys(GEMINI_VOICES).includes(voiceName);
+
+    if (isGemini) {
+        return generateGeminiAudio(params);
+    } else {
+        // Default to Google Cloud for 'pt-BR-*' voices
+        return generateGoogleCloudAudio({
+            text,
+            voiceName
+        });
     }
+}
+
+async function generateGeminiAudio(params: GenerateAudioParams): Promise<string> {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error('Gemini API key not configured');
 
     const {
         text,
         emotion = 'warmly',
-        voiceName = 'Kore', // Default to female voice
+        voiceName = 'Kore',
     } = params;
-
-    console.log('[Gemini TTS] Generating audio for text:', text.substring(0, 50) + '...');
-    console.log('[Gemini TTS] Emotion:', emotion, '| Voice:', voiceName);
 
     try {
         const ai = new GoogleGenAI({ apiKey });
-
-        // Build prompt with emotion control
         const promptText = `Say ${emotion}: ${text}`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-preview-tts',
-            contents: [{
-                parts: [{ text: promptText }]
-            }],
+            contents: [{ parts: [{ text: promptText }] }],
             config: {
                 responseModalities: ['AUDIO'],
                 speechConfig: {
@@ -86,16 +105,9 @@ export async function generateAudioNarration(params: GenerateAudioParams): Promi
             }
         });
 
-        // Extract audio data from response
         const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!audioData) throw new Error('No audio content returned from Gemini TTS API');
 
-        if (!audioData) {
-            throw new Error('No audio content returned from Gemini TTS API');
-        }
-
-        console.log('[Gemini TTS] Audio generated successfully');
-
-        // Return as Data URL for immediate use (WAV format)
         return `data:audio/wav;base64,${audioData}`;
 
     } catch (error: any) {
