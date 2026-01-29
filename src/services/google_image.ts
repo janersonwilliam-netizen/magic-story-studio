@@ -421,6 +421,12 @@ CRITICAL STYLE REQUIREMENTS (High Priority):
             if (result.candidates && result.candidates.length > 0) {
                 const candidate = result.candidates[0];
 
+                // Check finish reason
+                if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION' || candidate.finishReason === 'OTHER') {
+                    console.error(`[Gemini 3 Pro Image] Generation blocked. Reason: ${candidate.finishReason}`, candidate.safetyRatings);
+                    throw new Error(`Imagem de referência bloqueada. Motivo: ${candidate.finishReason}. Tente outro prompt.`);
+                }
+
                 if (candidate.content && candidate.content.parts) {
                     for (const part of candidate.content.parts) {
                         if (part.inlineData && part.inlineData.data) {
@@ -440,11 +446,24 @@ CRITICAL STYLE REQUIREMENTS (High Priority):
                 }
             }
 
-            console.error('[Gemini 3 Pro Image] No image data found in response');
-            throw new Error('Gemini 3 Pro Image não retornou uma imagem.');
+            console.error('[Gemini 3 Pro Image] No image data found in response', result);
+            const feedback = (result as any).promptFeedback;
+            if (feedback) {
+                console.error('[Gemini 3 Pro Image] Prompt Feedback:', feedback);
+                if (feedback.blockReason) {
+                    throw new Error(`Geração bloqueada. Motivo: ${feedback.blockReason}`);
+                }
+            }
+
+            throw new Error('Gemini 3 Pro Image não retornou uma imagem. Verifique se sua API Key tem permissão para o modelo e se não há restrições de segurança.');
 
         } catch (error: any) {
             console.error(`[Gemini 3 Pro Image] Error (Attempt ${attempt + 1}):`, error);
+
+            // Don't wrap if it's already an Error object we created
+            if (error.message && (error.message.includes('bloqueada') || error.message.includes('API Key'))) {
+                throw error;
+            }
 
             // Handle 503 Overloaded error - check multiple patterns
             const errorStr = JSON.stringify(error) || error.message || '';
