@@ -485,10 +485,20 @@ CRITICAL STYLE REQUIREMENTS (High Priority):
                 }
             }
 
-            // If max retries reached or other error, throw
-            throw new Error(`Falha na geração com referências: ${error.message}. Tente novamente.`);
+            // Fallback to Nano Banana (Gemini 2.5) if Gemini 3 Pro fails after retries or other errors
+            console.warn('[Gemini 3 Pro Image] Failed. Falling back to Gemini 2.5 Flash Image (Nano Banana).');
+            try {
+                // Use the original prompt for fallback, losing reference consistency but getting an image
+                return await generateImageWithNanoBanana(prompt);
+            } catch (fallbackError: any) {
+                console.error('[Gemini 3 Pro Image] Fallback failed:', fallbackError);
+                throw new Error(`Falha na geração com referências e fallback: ${error.message}.`);
+            }
         }
     }
 
-    throw new Error('Falha na geração após múltiplas tentativas.');
+    // This part essentially becomes unreachable due to the fallback in the loop's catch, 
+    // but kept for safety if loop breaks unexpectedly
+    console.warn('[Gemini 3 Pro Image] Loop finished without result. Falling back.');
+    return generateImageWithNanoBanana(prompt);
 }
