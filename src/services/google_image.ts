@@ -460,9 +460,10 @@ CRITICAL STYLE REQUIREMENTS (High Priority):
         } catch (error: any) {
             console.error(`[Gemini 3 Pro Image] Error (Attempt ${attempt + 1}):`, error);
 
-            // Don't wrap if it's already an Error object we created
+            // Don't wrap if it's already an Error object we created, but ALLOW fallback to proceed
+            // We removed the 'throw error' here to allow the code to reach the fallback block below
             if (error.message && (error.message.includes('bloqueada') || error.message.includes('API Key'))) {
-                throw error;
+                console.warn('[Gemini 3 Pro Image] Blocked or API Error. Proceeding to fallback.');
             }
 
             // Handle 503 Overloaded error - check multiple patterns
