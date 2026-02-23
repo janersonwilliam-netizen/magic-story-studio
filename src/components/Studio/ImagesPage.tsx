@@ -28,6 +28,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
     const [generationStatus, setGenerationStatus] = useState<Record<string, ImageGenerationStatus>>({});
     const [generating, setGenerating] = useState(false);
     const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
+    const [useEconomyModel, setUseEconomyModel] = useState(false); // New Test Mode State
 
     const hasStartedRef = React.useRef(false);
 
@@ -239,19 +240,21 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 // 3. Generate image with character-specific references
                 let imageUrl: string;
 
-                if (sceneReferenceImages.length > 0) {
+                // CHECK TEST MODE: If Economy Mode is ON, skip references and use Nano Banana
+                if (sceneReferenceImages.length > 0 && !useEconomyModel) {
                     // Use Gemini 3 Pro with character references AND statuses
                     const { generateImageWithReferences } = await import('../../services/google_image');
                     imageUrl = await generateImageWithReferences(
                         optimizedPrompt!,
                         sceneReferenceImages,
-                        sceneCharacterStatuses // Pass statuses for conditional duplication
+                        sceneCharacterStatuses, // Pass statuses for conditional duplication
+                        storyWithScenes.visualStyle // Pass the visual style
                     );
                     console.log(`[ImagesPage] Scene ${i + 1} generated with ${sceneReferenceImages.length} character reference(s)`);
                 } else {
                     // Fallback to standard generation if no references
                     const { generateImageWithNanoBanana } = await import('../../services/google_image');
-                    imageUrl = await generateImageWithNanoBanana(optimizedPrompt!);
+                    imageUrl = await generateImageWithNanoBanana(optimizedPrompt!, storyWithScenes.visualStyle);
                     console.log(`[ImagesPage] Scene ${i + 1} generated without references`);
                 }
 
@@ -335,16 +338,18 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
 
             let imageUrl: string;
 
-            if (sceneReferenceImages.length > 0) {
+            // CHECK TEST MODE: If Economy Mode is ON, skip references and use Nano Banana
+            if (sceneReferenceImages.length > 0 && !useEconomyModel) {
                 const { generateImageWithReferences } = await import('../../services/google_image');
                 imageUrl = await generateImageWithReferences(
                     optimizedPrompt,
                     sceneReferenceImages,
-                    sceneCharacterStatuses
+                    sceneCharacterStatuses,
+                    storyWithScenes.visualStyle
                 );
             } else {
                 const { generateImageWithNanoBanana } = await import('../../services/google_image');
-                imageUrl = await generateImageWithNanoBanana(optimizedPrompt);
+                imageUrl = await generateImageWithNanoBanana(optimizedPrompt, storyWithScenes.visualStyle);
             }
 
             setGenerationStatus(prev => ({
@@ -483,6 +488,23 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                     <p className="text-muted-foreground">
                         Gerando imagens mágicas para cada cena
                     </p>
+
+                    {/* TEST MODE TOGGLE */}
+                    <div className="flex items-center justify-center mt-4 gap-2">
+                        <div className="flex items-center space-x-2 bg-secondary/30 p-2 rounded-lg border border-border">
+                            <input
+                                type="checkbox"
+                                id="economyMode"
+                                checked={useEconomyModel}
+                                onChange={(e) => setUseEconomyModel(e.target.checked)}
+                                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                disabled={generating}
+                            />
+                            <label htmlFor="economyMode" className="text-sm font-medium text-foreground cursor-pointer select-none">
+                                🧪 Modo Teste: Forçar Nano Banana (S/ Consistência)
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Progress Bar */}

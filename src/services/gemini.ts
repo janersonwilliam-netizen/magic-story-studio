@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { DEFAULT_INSTRUCTIONS_CLASSICA, DEFAULT_INSTRUCTIONS_BIBLICA } from '../lib/promptDefaults';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -12,8 +13,10 @@ export interface GenerateStoryParams {
     title: string;
     age_group: string;
     tone: string;
+    theme: string;
     duration: number;
     storyIdea?: string;
+    customSystemInstructions?: string;
 }
 
 export interface GenerateStoryResponse {
@@ -31,53 +34,15 @@ export async function generateStoryWithGemini(
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     // System instructions (embedded in the prompt for Gemini)
-    const systemInstructions = `Você é um criador de histórias infantis narrativas para YouTube.
+    let systemInstructions = params.customSystemInstructions;
 
-Seu objetivo é escrever historinhas originais, lúdicas e educativas com começo, meio e fim. As histórias são pensadas para crianças pequenas (de 3 a 8 anos), com linguagem simples, amigável e acolhedora.
-
-Os roteiros têm personagens cativantes (muitas vezes animais fofos), pequenos desafios apropriados para a idade, e sempre encerram com uma mensagem positiva.
-
-REGRAS FUNDAMENTAIS:
-1. Sempre use linguagem simples e adequada à faixa etária
-2. Crie personagens cativantes e memoráveis (animais fofos, crianças ou criaturas mágicas)
-3. Inclua uma mensagem positiva ou lição de vida
-4. Evite temas sensíveis: violência, medo excessivo, temas adultos
-5. Use descrições visuais ricas para facilitar a geração de imagens
-6. Mantenha estrutura clara: início, meio e fim
-7. Crie diálogos naturais e autênticos quando apropriado
-8. Inclua elementos de fantasia e imaginação
-9. Promova valores positivos: amizade, coragem, bondade, curiosidade
-10. Escreva em português brasileiro
-
-ESTRUTURA NARRATIVA OBRIGATÓRIA:
-
-📖 INTRODUÇÃO:
-- Abertura com gancho convidativo: "Hoje eu vou contar uma historinha [Título da História]..."
-- Apresentação do personagem principal e do cenário encantado
-- Estabeleça o mundo da história de forma acolhedora
-
-📖 DESENVOLVIMENTO:
-- Um evento muda a rotina do personagem (conflito leve, seguro e educativo)
-- Desafio adequado à idade: ajudar um amigo, proteger a natureza, superar um pequeno medo
-- Interação com outros personagens ou busca de uma solução
-- Momentos de tensão apropriados que mantêm o interesse
-
-📖 CONCLUSÃO:
-- Resolução positiva e alegre
-- Reconhecimento ou recompensa simbólica ao personagem
-- Moral da história com lição educativa clara
-- Encerramento carinhoso: "Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Um beijo grande… e até a próxima história! Tchau, tchau!"
-- Desenvolvimento: Apresente o desafio ou aventura
-- Clímax: Momento de maior tensão ou descoberta
-- Resolução: Solução do problema de forma positiva
-- Conclusão: Mensagem final reconfortante
-
-ESTILO DE ESCRITA:
-- Frases curtas e diretas
-- Vocabulário rico mas acessível
-- Ritmo dinâmico e envolvente
-- Descrições sensoriais (cores, sons, texturas)
-- Repetições e padrões quando apropriado (para crianças menores)`;
+    if (!systemInstructions) {
+        if (params.theme === 'biblica') {
+            systemInstructions = DEFAULT_INSTRUCTIONS_BIBLICA;
+        } else {
+            systemInstructions = DEFAULT_INSTRUCTIONS_CLASSICA;
+        }
+    }
 
     // Build age-specific requirements
     let ageRequirements = '';
@@ -135,12 +100,18 @@ ESTILO DE ESCRITA:
         ideaPrompt = `\nIDEIA/ENREDO DO USUÁRIO (Obrigatório seguir): "${params.storyIdea.trim()}"\n`;
     }
 
+    // Force biblical context to avoid tone overrides
+    if (params.theme === 'biblica') {
+        systemInstructions += `\n\n[DIRETRIZ OBRIGATÓRIA: O usuário exigiu que esta história seja estritamente BÍBLICA. Você DEVE incluir elementos cristãos, valores ensinados por Deus, princípios bíblicos claros e uma moral cristã no final. Não crie uma história secular, mesmo que o tom seja de aventura.]\n`;
+    }
+
     const prompt = `${systemInstructions}
 
 Crie uma história infantil com as seguintes características:
 
 TÍTULO: ${params.title}
 FAIXA ETÁRIA: ${params.age_group} anos
+TEMA: ${params.theme}
 TOM: ${params.tone}
 DURAÇÃO DE LEITURA: aproximadamente ${params.duration} minutos
 ${ideaPrompt}
@@ -206,6 +177,28 @@ IMPORTANTE: Retorne APENAS o texto da história, sem nenhum texto adicional, exp
     throw new Error('Failed to generate story after multiple attempts.');
 }
 
+/**
+ * Translates a text to a target language using Gemini
+ */
+export async function translateTitle(title: string, targetLanguage: string): Promise<string> {
+    if (!genAI) throw new Error('Gemini API not configured');
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    const prompt = `Translate the following book title to ${targetLanguage}.
+    Title: "${title}"
+    
+    IMPORTANT: Return ONLY the translated title, nothing else. No explanation, no quotes.`;
+
+    try {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text().trim().replace(/^"|"$/g, '');
+    } catch (error) {
+        console.error(`Error translating title to ${targetLanguage}:`, error);
+        return title; // Return original if translation fails
+    }
+}
+
 export async function extractCharactersFromStory(storyText: string): Promise<Record<string, string>> {
     if (!genAI) throw new Error('Gemini API not configured');
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -254,7 +247,8 @@ export interface StructuredCharacterData {
 
 export async function extractStructuredCharacterData(
     storyText: string,
-    characterName: string
+    characterName: string,
+    visualStyle: string = 'Estilo Pixar 3D'
 ): Promise<StructuredCharacterData> {
     if (!genAI) throw new Error('Gemini API not configured');
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -273,14 +267,14 @@ Retorne um JSON com as seguintes informações (infira características apropria
     "main_colors": ["cor1", "cor2", "cor3"],
     "clothing": "descrição das roupas ou aparência",
     "accessories": "acessórios ou itens especiais (ou 'Nenhum')",
-    "full_description": "descrição visual completa e detalhada para geração de imagem, incluindo espécie, cores, roupas, acessórios, características físicas, estilo Pixar 3D"
+    "full_description": "descrição visual completa e detalhada para geração de imagem, incluindo espécie, cores, roupas, acessórios, características físicas, no estilo ${visualStyle}"
 }
 
 IMPORTANTE:
 - Seja MUITO específico com cores (ex: "branco cremoso", "azul celeste", "dourado brilhante")
 - A descrição completa deve ter pelo menos 100 palavras
 - Foque em características visuais que podem ser desenhadas
-- Use o estilo Pixar/DreamWorks como referência
+- Adapte a descrição para combinar com o estilo: ${visualStyle}
 
 Retorne APENAS o JSON válido, sem markdown ou explicações.`;
 

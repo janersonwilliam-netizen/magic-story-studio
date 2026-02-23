@@ -43,9 +43,6 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
                 return prev.filter(c => c !== name);
             } else {
                 if (prev.length >= 2) {
-                    // Optional: Limit to 2 for thumbnail clarity, or allow more?
-                    // Let's allow but maybe warn or just replace oldest?
-                    // User request: "se forem 2 use os dois" -> Let's keep it simple, just add.
                     return [...prev, name];
                 }
                 return [...prev, name];
@@ -53,77 +50,147 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
         });
     };
 
-    const generateThumbnail = async () => {
+    // Multi-language state
+    const [englishTitle, setEnglishTitle] = useState<string | null>(null);
+    const [spanishTitle, setSpanishTitle] = useState<string | null>(null);
+    const [generatedEnglish, setGeneratedEnglish] = useState(false);
+
+    // Store all generated images
+    const [images, setImages] = useState<{
+        original: string | null;
+        english: string | null;
+        spanish: string | null;
+    }>({
+        original: storyWithScenes.thumbnailUrl || null,
+        english: null,
+        spanish: null
+    });
+
+    // If the thumbnail URL is already set, we assume the initial (likely Portuguese) one is done
+    const initialGenerated = !!images.original;
+
+    const generateThumbnail = async (language: 'original' | 'english' | 'spanish' = 'original') => {
         if (!introScene) return;
 
         setGenerating(true);
         setError('');
-        setImageUrl(null);
 
         try {
-            console.log('[ThumbnailPage] Generating thumbnail...');
+            console.log(`[ThumbnailPage] Generating thumbnail (${language})...`);
 
-            // Build the specific Title Card prompt
-            let prompt = introScene.imagePrompt || '';
+            // Determine effective title
+            let effectiveTitle = storyWithScenes.title;
 
-            // Collect references for ALL selected characters
+            if (language === 'english') {
+                if (!englishTitle) {
+                    const { translateTitle } = await import('../../services/gemini');
+                    const translated = await translateTitle(storyWithScenes.title, 'English');
+                    setEnglishTitle(translated);
+                    effectiveTitle = translated;
+                } else {
+                    effectiveTitle = englishTitle;
+                }
+            } else if (language === 'spanish') {
+                if (!spanishTitle) {
+                    const { translateTitle } = await import('../../services/gemini');
+                    const translated = await translateTitle(storyWithScenes.title, 'Spanish');
+                    setSpanishTitle(translated);
+                    effectiveTitle = translated;
+                } else {
+                    effectiveTitle = spanishTitle;
+                }
+            }
+
+            // Collect references and statuses
             const references: string[] = [];
             const statuses: string[] = [];
             const selectedNames: string[] = [];
 
-            selectedCharacters.forEach(name => {
-                if (storyWithScenes.characterReferenceImages?.[name]) {
-                    references.push(storyWithScenes.characterReferenceImages[name]);
-                    statuses.push('protagonist'); // Force high consistency for cover
-                    selectedNames.push(name);
-                }
-            });
+            // CRITICAL CHANGE: If generating English or Spanish, use the ORIGINAL image as the PRIMARY reference
+            // to ensure consistency (change only title)
+            if (language !== 'original' && images.original) {
+                console.log('[ThumbnailPage] Using ORIGINAL cover as reference for consistency');
+                references.push(images.original);
+                statuses.push('protagonist'); // Give it broad weight
+            }
+
+            // Then add character references as usual (maybe with less weight if we have the main image?)
+            // Actually, if we have the main image, adding characters again might confuse it or be redundant.
+            // But let's keep them to be safe, especially if the original didn't capture them perfectly? 
+            // Or maybe purely rely on the Original Image reference?
+            // Let's rely on the Original Image + Prompt to Guide the change.
+
+            if (language === 'original') {
+                selectedCharacters.forEach(name => {
+                    if (storyWithScenes.characterReferenceImages?.[name]) {
+                        references.push(storyWithScenes.characterReferenceImages[name]);
+                        statuses.push('protagonist');
+                        selectedNames.push(name);
+                    }
+                });
+            }
+
+            let prompt = '';
 
             // Enhanced prompt construction
-            // If we have specific characters selected, mention them explicitly
-            if (selectedNames.length > 0) {
-                const { generateImageWithReferences } = await import('../../services/google_image');
+            if (language !== 'original') {
+                // Prompt for MODIFICATION / VARIATION
+                const styleMod = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
+                    ? `Premium 2D Cartoon style. The title text is now "${effectiveTitle}" in bold, colorful 2D typography`
+                    : `Disney/Pixar 3D style. The title text is now "${effectiveTitle}" in BIG, BOLD, 3D TYPOGRAPHY`;
 
-                const charDescriptions = selectedNames.map(name => {
-                    const charDNA = storyWithScenes.characters[name];
-                    const visualDesc = charDNA?.description || charDNA?.full_description || ''; // Use most detailed available
-                    // Extract key visual traits short enough for prompt
-                    return `${name} (${visualDesc.slice(0, 150)}...)`;
-                });
-
-                const charText = charDescriptions.length > 1
-                    ? `Characters: ${charDescriptions.join(' AND ')}`
-                    : `Character: ${charDescriptions[0]}`;
-
-
-
-                // New Prompt specialized for Title Card + Characters
-                prompt = `TITULO: ${storyWithScenes.title}
-CENA: Movie Poster Layout. Disney/Pixar 3D style. The title text "${storyWithScenes.title}" is displayed in BIG, BOLD, 3D TYPOGRAPHY (like a movie logo) at the top or center. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.
-PERSONAGEM: ${charText}. Posing dynamically interactions with the title text (e.g. leaning on it, jumping over it, presenting it).
+                prompt = `TITULO: ${effectiveTitle}
+CENA: Movie Poster Layout. ${styleMod} at the top or center.
+IMPORTANT: KEEP THE VISUAL IDENTICAL to the reference image provided. SAME characters, SAME pose, SAME background. ONLY CHANGE THE TEXT TITLE to "${effectiveTitle}".
 EMOÇÃO: Happy, Excited, Adventurous.`;
 
-                console.log(`[ThumbnailPage] Using references for: ${selectedNames.join(', ')}`);
-
-                const url = await generateImageWithReferences(
-                    prompt,
-                    references,
-                    statuses
-                );
-
-                setImageUrl(url);
-
             } else {
-                // Fallback standard generation (no characters or no references)
-                console.log('[ThumbnailPage] No characters selected, using standard generation');
-                const { generateImageWithNanoBanana } = await import('../../services/google_image');
+                // Standard Prompt for Original
+                const { generateImageWithReferences } = await import('../../services/google_image'); // just for type check if needed, mostly logic below
 
-                if (!prompt.includes('TITLE CARD')) {
-                    prompt = `TITLE CARD: "${storyWithScenes.title}". Disney/Pixar 3D style title text. Magical, vibrant, high quality 8k render.`;
+                let charText = '';
+                if (selectedNames.length > 0) {
+                    const charDescriptions = selectedNames.map(name => {
+                        const charDNA = storyWithScenes.characters[name];
+                        const visualDesc = charDNA?.description || charDNA?.full_description || '';
+                        return `${name} (${visualDesc.slice(0, 150)}...)`;
+                    });
+                    charText = charDescriptions.length > 1
+                        ? `Characters: ${charDescriptions.join(' AND ')}`
+                        : `Character: ${charDescriptions[0]}`;
                 }
 
-                const url = await generateImageWithNanoBanana(prompt);
-                setImageUrl(url);
+                const styleModOrig = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
+                    ? `Premium 2D Cartoon style. The title text "${effectiveTitle}" is displayed in bold, colorful 2D typography (like a modern mobile game logo) at the top or center. Vibrant colors, magical atmosphere, crisp lines, 16:9 wide shot, NO 3D rendering.`
+                    : `Disney/Pixar 3D style. The title text "${effectiveTitle}" is displayed in BIG, BOLD, 3D TYPOGRAPHY (like a movie logo) at the top or center. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.`;
+
+                prompt = `TITULO: ${effectiveTitle}
+CENA: Movie Poster Layout. ${styleModOrig}
+PERSONAGEM: ${charText}. Posing dynamically interactions with the title text.
+EMOÇÃO: Happy, Excited, Adventurous.`;
+            }
+
+            console.log(`[ThumbnailPage] Generating with references: ${references.length}`);
+
+            const { generateImageWithReferences } = await import('../../services/google_image');
+
+            // If we have references (either chars or original cover), use them
+            // If standard generation with no chars, fallback to nano banana inside generateImageWithReferences (it handles empty refs)
+            // But wait, generateImageWithReferences with empty refs falls back to standard.
+
+            const url = await generateImageWithReferences(
+                prompt,
+                references,
+                statuses
+            );
+
+            // Update specific image slot and set as current selected
+            setImages(prev => ({ ...prev, [language]: url }));
+            setImageUrl(url);
+
+            // Update state to unlock next steps
+            if (language === 'english') {
+                setGeneratedEnglish(true);
             }
 
         } catch (err: any) {
@@ -147,14 +214,11 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
 
             onComplete({
                 ...storyWithScenes,
-                thumbnailUrl: imageUrl, // CRITICAL: Propagate thumbnailUrl to skip Scene 1 in ImagesPage
+                thumbnailUrl: imageUrl,
                 scenes: updatedScenes
             });
         }
     };
-
-    // Auto-generate removed per user request
-    // User must click "Gerar Capa" manually
 
     if (!introScene) {
         return (
@@ -184,33 +248,102 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
 
                 <div className="grid md:grid-cols-2 gap-8 items-start">
 
-                    {/* Preview Area */}
-                    <div className="bg-muted/30 rounded-xl overflow-hidden aspect-video relative flex items-center justify-center border-2 border-border shadow-inner group">
-                        {generating ? (
-                            <div className="flex flex-col items-center">
-                                <Loader2 className="w-12 h-12 text-primary animate-spin mb-2" />
-                                <p className="text-muted-foreground font-medium">Criando capa mágica...</p>
-                            </div>
-                        ) : imageUrl ? (
-                            <>
-                                <img
-                                    src={imageUrl}
-                                    alt="Thumbnail Preview"
-                                    className="w-full h-full object-cover"
-                                />
-                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none">
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-2 group-hover:translate-y-0">
-                                        {/* Overlay content if needed */}
-                                    </div>
+                    {/* Preview Area - Scrollable List */}
+                    <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+
+                        {/* 1. Original / Portuguese */}
+                        <div className={`relative rounded-xl overflow-hidden aspect-video border-2 transition-all cursor-pointer group ${imageUrl === images.original && images.original ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}
+                            onClick={() => images.original && setImageUrl(images.original)}>
+
+                            {generating && !images.original && !images.english && !images.spanish ? (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/30">
+                                    <Loader2 className="w-12 h-12 text-primary animate-spin mb-2" />
+                                    <p className="text-muted-foreground font-medium">Criando capa mágica...</p>
                                 </div>
-                            </>
-                        ) : error ? (
-                            <div className="flex flex-col items-center text-destructive p-4 text-center">
+                            ) : images.original ? (
+                                <>
+                                    <img src={images.original} alt="Capa Original" className="w-full h-full object-cover" />
+                                    <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded backdrop-blur-sm">
+                                        Portugues (Original)
+                                    </div>
+                                    {imageUrl === images.original && (
+                                        <div className="absolute top-2 right-2 bg-primary text-primary-foreground p-1 rounded-full">
+                                            <Check className="w-4 h-4" />
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="absolute inset-0 flex items-center justify-center bg-muted/30 text-muted-foreground/50">
+                                    Aguardando geração...
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 2. English Version */}
+                        {(generatedEnglish || images.english) && (
+                            <div className={`relative rounded-xl overflow-hidden aspect-video border-2 transition-all cursor-pointer group ${imageUrl === images.english && images.english ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-blue-100'}`}
+                                onClick={() => images.english && setImageUrl(images.english)}>
+
+                                {generating && !images.english && images.original ? (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/30">
+                                        <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-2" />
+                                        <p className="text-blue-600 font-medium">Translating & Generating...</p>
+                                    </div>
+                                ) : images.english ? (
+                                    <>
+                                        <img src={images.english} alt="English Cover" className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 left-2 bg-blue-600/80 text-white text-xs px-2 py-1 rounded backdrop-blur-sm">
+                                            English
+                                        </div>
+                                        {imageUrl === images.english && (
+                                            <div className="absolute top-2 right-2 bg-blue-600 text-white p-1 rounded-full">
+                                                <Check className="w-4 h-4" />
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-blue-50 text-blue-400">
+                                        <Loader2 className="w-8 h-8 animate-spin" />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* 3. Spanish Version */}
+                        {(images.spanish || (generatedEnglish && generating && !images.spanish && images.english)) ? (
+                            <div className={`relative rounded-xl overflow-hidden aspect-video border-2 transition-all cursor-pointer group ${imageUrl === images.spanish && images.spanish ? 'border-orange-500 ring-2 ring-orange-500/30' : 'border-orange-100'}`}
+                                onClick={() => images.spanish && setImageUrl(images.spanish)}>
+
+                                {generating && !images.spanish ? (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/30">
+                                        <Loader2 className="w-8 h-8 text-orange-500 animate-spin mb-2" />
+                                        <p className="text-orange-600 font-medium">Traduciendo & Generando...</p>
+                                    </div>
+                                ) : images.spanish ? (
+                                    <>
+                                        <img src={images.spanish} alt="Spanish Cover" className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 left-2 bg-orange-600/80 text-white text-xs px-2 py-1 rounded backdrop-blur-sm">
+                                            Español
+                                        </div>
+                                        {imageUrl === images.spanish && (
+                                            <div className="absolute top-2 right-2 bg-orange-600 text-white p-1 rounded-full">
+                                                <Check className="w-4 h-4" />
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-orange-50 text-orange-400">
+                                        <Loader2 className="w-8 h-8 animate-spin" />
+                                    </div>
+                                )}
+                            </div>
+                        ) : null}
+
+                        {error && (
+                            <div className="flex flex-col items-center text-destructive p-4 text-center bg-red-50 rounded-lg">
                                 <span className="text-2xl mb-2">⚠️</span>
                                 <p>{error}</p>
                             </div>
-                        ) : (
-                            <p className="text-muted-foreground/50">Aguardando geração...</p>
                         )}
                     </div>
 
@@ -274,7 +407,7 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                         {/* Actions */}
                         <div className="space-y-3 pt-2">
                             <button
-                                onClick={generateThumbnail}
+                                onClick={() => generateThumbnail('original')}
                                 disabled={generating}
                                 className="w-full py-3 bg-card border-2 border-border text-foreground rounded-xl hover:border-primary hover:text-primary transition-colors font-semibold flex items-center justify-center gap-2 shadow-sm"
                             >
@@ -283,8 +416,40 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                                 ) : (
                                     <RefreshCw className="w-5 h-5" />
                                 )}
-                                {imageUrl ? 'Regenerar Capa' : 'Gerar Capa'}
+                                {imageUrl ? 'Regenerar Capa (PT)' : 'Gerar Capa'}
                             </button>
+
+                            {/* English Generation */}
+                            {initialGenerated && (
+                                <button
+                                    onClick={() => generateThumbnail('english')}
+                                    disabled={generating}
+                                    className="w-full py-3 bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-xl hover:bg-blue-100 hover:border-blue-300 transition-colors font-semibold flex items-center justify-center gap-2 shadow-sm"
+                                >
+                                    {generating ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <span className="text-lg">🇺🇸</span>
+                                    )}
+                                    Gerar em Inglês
+                                </button>
+                            )}
+
+                            {/* Spanish Generation */}
+                            {generatedEnglish && (
+                                <button
+                                    onClick={() => generateThumbnail('spanish')}
+                                    disabled={generating}
+                                    className="w-full py-3 bg-orange-50 border-2 border-orange-200 text-orange-700 rounded-xl hover:bg-orange-100 hover:border-orange-300 transition-colors font-semibold flex items-center justify-center gap-2 shadow-sm"
+                                >
+                                    {generating ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <span className="text-lg">🇪🇸</span>
+                                    )}
+                                    Gerar em Espanhol
+                                </button>
+                            )}
 
                             <button
                                 onClick={handleConfirm}

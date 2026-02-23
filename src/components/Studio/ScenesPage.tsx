@@ -84,7 +84,7 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
                 try {
                     // Use new structured extraction function
                     const { extractStructuredCharacterData } = await import('../../services/gemini');
-                    const structuredData = await extractStructuredCharacterData(story.storyText, name);
+                    const structuredData = await extractStructuredCharacterData(story.storyText, name, story.visualStyle);
 
                     characterDNAs[name] = {
                         name,
@@ -129,9 +129,10 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
             console.log(`[ScenesPage] Generating reference image for ${characterName}...`);
 
             // Build detailed prompt from character DNA with CHILD-FRIENDLY emphasis
-            const characterPrompt = `CHILD-FRIENDLY PIXAR/DREAMWORKS STYLE CHARACTER:
-- BIG expressive eyes (35-40% of face)
-- Soft, rounded, cute features
+            const characterPrompt = `VISUAL STYLE: ${story.visualStyle}
+${story.visualStyle === 'Estilo 2D Cartoon'
+                    ? '- Premium 2D cartoon illustration. Vibrant colors, soft shading, clean lines. Modern mobile game art style.\n- NO 3D render. Cute, magical storybook look.'
+                    : '- 3D Pixar/DreamWorks Style Character\n- BIG expressive eyes (35-40% of face)\n- Soft, rounded, cute features'}
 - Adorable, friendly, non-threatening appearance
 - Perfect for children ages 3-8
 
@@ -151,7 +152,7 @@ TECHNICAL:
 - NO realistic/adult features`;
 
             const { generateImageWithNanoBanana } = await import('../../services/google_image');
-            const imageUrl = await generateImageWithNanoBanana(characterPrompt);
+            const imageUrl = await generateImageWithNanoBanana(characterPrompt, story.visualStyle);
 
             setCharacterReferenceImages(prev => ({ ...prev, [characterName]: imageUrl }));
             setGeneratingCharacterImages(prev => ({ ...prev, [characterName]: false }));
@@ -173,7 +174,7 @@ TECHNICAL:
             ...story,
             scenes,
             characters,
-            characterReferenceImage: referenceImagesArray.length > 0 ? referenceImagesArray[0] : null, // Backwards compatibility
+            characterReferenceImage: referenceImagesArray.length > 0 ? referenceImagesArray[0] as string : null, // Backwards compatibility
             characterReferenceImages // Pass all character images by name
         };
         onComplete(storyWithScenes);

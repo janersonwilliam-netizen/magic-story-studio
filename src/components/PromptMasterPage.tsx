@@ -4,75 +4,13 @@ import { Save, RotateCcw, Loader2, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-const DEFAULT_DESCRIPTION = 'Cria historinhas infantis com personagens cativantes, aventuras leves e mensagens educativas. Ideal para contação de histórias, leitura em voz alta e criação de histórias lúdicas para crianças pequenas.';
-
-const DEFAULT_INSTRUCTIONS = `📚 Instruções para o Comportamento do GPT:
-Você é um criador de histórias infantis narrativas.
-
-Seu objetivo é escrever historinhas originais, lúdicas e educativas com começo, meio e fim. As histórias são pensadas para crianças pequenas (de 3 a 8 anos), com linguagem simples, amigável e acolhedora.
-
-Os roteiros têm personagens cativantes (muitas vezes animais fofos), pequenos desafios apropriados para a idade, e sempre encerram com uma mensagem positiva.
-
-🎬 Estrutura da História:
-Introdução: Abertura com gancho convidativo
-Desenvolvimento: Conflito leve e educativo
-Conclusão: Resolução positiva com lição educativa
-
-Encerramento: "Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho!"`;
-
-const DEFAULT_IMAGE_TEMPLATE = `Crie um [personagem] com aparência extremamente fofa e expressiva, no estilo de animação 3D Pixar / DreamWorks. O personagem deve ter olhos grandes e brilhantes, repletos de [emoção desejada, ex: surpresa encantada, alegria radiante ou curiosidade profunda], com blush suave nas bochechas, orelhas [formato, ex: arredondadas, caídas ou pontudas], e uma textura realista com acabamento suave que ressalta sua personalidade cativante. Os traços devem transmitir ternura e carisma à primeira vista.
-IMPORTANTE: O personagem deve ocupar cerca de 10% da largura da imagem, posicionado de forma centralizada ou levemente deslocado, para que o cenário ao redor seja amplamente visível e contribua com a atmosfera mágica da composição.
-O fundo deve retratar um cenário rico em cor e profundidade, como uma [ex: floresta ensolarada, jardim encantado, vila mágica ou clareira brilhante], com árvores detalhadas, flores vibrantes, folhas dançantes ao vento, pequenos animais ao fundo ou trilhas sinuosas. Adicione elementos que tragam dinamismo e fantasia — como luz filtrando entre as copas das árvores, pétalas flutuando no ar, cogumelos coloridos, borboletas ou passarinhos em movimento — para criar um visual cinematográfico, vibrante e encantador.
-A iluminação deve ser suave e mágica, com um efeito de backlight dourado que contorna o personagem com luz quente, realçando sua silhueta e trazendo uma sensação de manhã ensolarada ou entardecer encantado.
-Estilo ultra-realista cartoon, com riqueza de detalhes e atmosfera envolvente. Referências visuais: Zootopia, Encanto, Como Treinar o Seu Dragão. Composição horizontal. Resolução: 1920x1080 pixels.`;
-
-const DEFAULT_CHARACTER_SHEET = `Olá, aqui é o Concept Artist Sênior.
-Para garantir que o personagem [NOME DO PERSONAGEM] mantenha identidade visual consistente em qualquer ângulo, cena ou variação gerada por IA, este design equilibra apelo emocional no estilo Pixar com especificações técnicas rígidas e reproduzíveis.
-
-Abaixo está o Character Sheet Oficial de [NOME DO PERSONAGEM]:
-
-1. Espécie e Anatomia Colorimétrica
-
-Espécie: [Definir espécie principal] estilizada, com proporções infantis e leitura clara de silhueta.
-Formato do Corpo: [Ex: oval, arredondado, gota, compacto], priorizando simplicidade e reconhecimento imediato.
-Cor Principal: [Cor base dominante].
-Textura da Superfície: [Descrever textura: lisa, macia, iridescente, pelúcia, escamas, etc.], com acabamento cartoon ultra-realista.
-Regiões Secundárias: [Barriga, patas, barbatanas, rosto ou detalhes] em tom complementar ou mais claro.
-Extremidades: Curtas, arredondadas e levemente estilizadas para reforçar fofura e segurança visual.
-
-2. Olhos (Ponto Focal Emocional)
-
-Formato: Proporcionalmente grandes, estilo Pixar / DreamWorks, ocupando cerca de 35% a 45% do rosto.
-Cor da Íris: [Cor contrastante com o corpo].
-Pupilas: Grandes e bem definidas para facilitar leitura emocional.
-Brilho: Brilho especular duplo (dois pontos de luz branca) para efeito vítreo e sensação de vida.
-Função Emocional: Olhos devem transmitir claramente emoções como alegria, curiosidade, medo, ternura ou surpresa.
-
-3. Acessórios Fixos (Identidade Permanente)
-
-Acessório Principal: [Item icônico do personagem: chapéu, capacete, laço, mochila, concha, etc.].
-Material: [Madeira, folha, tecido, metal suave, elemento natural].
-Fixação: [Como o acessório se prende ao personagem].
-Item Afetivo: O personagem sempre carrega ou mantém por perto um objeto simbólico (ex: brinquedo, pedra, folha, instrumento), que ajuda na continuidade visual e emocional.
-
-4. Detalhes Únicos e Silhueta
-
-Expressão Característica: [Ex: sobrancelhas expressivas, sorriso tímido, boca pequena, bochechas com blush].
-Proporção Geral: Cabeça levemente maior que o corpo (chibi sofisticado), reforçando vulnerabilidade e empatia.
-Efeito de Luz: Uso de subsurface scattering em áreas finas (orelhas, barbatanas, asas, bordas do corpo).
-Silhueta: Reconhecível mesmo em sombra ou contra a luz, sem depender de detalhes finos.
-
-5. Diretrizes de Renderização (Obrigatórias)
-
-Estilo: Animação 3D estilo Pixar / DreamWorks.
-Iluminação: Cinematográfica, suave, com backlight dourado.
-Textura: Ultra-realista cartoon, sem aspecto plástico.
-Cenário: Compatível com o universo da história, mantendo o personagem visualmente dominante.
-Consistência: Todas as gerações devem respeitar este sheet como referência base.
-
-PROMPT DE REFERÊNCIA RÁPIDA (PARA IA)
-
-"A stylized Pixar-style character named [NOME DO PERSONAGEM], a [espécie] with [cor principal], [textura do corpo], huge expressive eyes with [cor da íris], wearing [acessório fixo] and carrying [item afetivo]. Cute proportions with a slightly oversized head, cinematic lighting, subsurface scattering, ultra-detailed 3D render, high consistency character design, 8k."`;
+import {
+    DEFAULT_INSTRUCTIONS_CLASSICA,
+    DEFAULT_INSTRUCTIONS_BIBLICA,
+    DEFAULT_IMAGE_TEMPLATE_3D,
+    DEFAULT_IMAGE_TEMPLATE_2D,
+    DEFAULT_CHARACTER_SHEET
+} from '../lib/promptDefaults';
 
 export function PromptMasterPage() {
     const { user } = useAuth();
@@ -81,10 +19,15 @@ export function PromptMasterPage() {
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState('');
 
-    const [description, setDescription] = useState(DEFAULT_DESCRIPTION);
-    const [instructions, setInstructions] = useState(DEFAULT_INSTRUCTIONS);
-    const [imageTemplate, setImageTemplate] = useState(DEFAULT_IMAGE_TEMPLATE);
+    const [instructions, setInstructions] = useState(DEFAULT_INSTRUCTIONS_CLASSICA);
+    const [instructionsBiblica, setInstructionsBiblica] = useState(DEFAULT_INSTRUCTIONS_BIBLICA);
+    const [imageTemplate, setImageTemplate] = useState(DEFAULT_IMAGE_TEMPLATE_3D);
+    const [imageTemplate2D, setImageTemplate2D] = useState(DEFAULT_IMAGE_TEMPLATE_2D);
     const [characterSheet, setCharacterSheet] = useState(DEFAULT_CHARACTER_SHEET);
+
+    const [mainTab, setMainTab] = useState<'historias' | 'imagens'>('historias');
+    const [historiaTab, setHistoriaTab] = useState<'classica' | 'biblica'>('classica');
+    const [imagemTab, setImagemTab] = useState<'3d' | '2d'>('3d');
 
     useEffect(() => {
         loadPreferences();
@@ -95,16 +38,17 @@ export function PromptMasterPage() {
             setLoading(true);
             const { data, error: fetchError } = await supabase
                 .from('user_preferences')
-                .select('master_prompt_description, master_prompt_instructions, image_prompt_template')
+                .select('master_prompt_instructions, master_prompt_instructions_biblica, image_prompt_template, image_prompt_template_2d')
                 .eq('user_id', user?.id)
                 .single();
 
             if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
 
             if (data) {
-                setDescription(data.master_prompt_description || DEFAULT_DESCRIPTION);
-                setInstructions(data.master_prompt_instructions || DEFAULT_INSTRUCTIONS);
-                setImageTemplate(data.image_prompt_template || DEFAULT_IMAGE_TEMPLATE);
+                setInstructions(data.master_prompt_instructions || DEFAULT_INSTRUCTIONS_CLASSICA);
+                setInstructionsBiblica(data.master_prompt_instructions_biblica || DEFAULT_INSTRUCTIONS_BIBLICA);
+                setImageTemplate(data.image_prompt_template || DEFAULT_IMAGE_TEMPLATE_3D);
+                setImageTemplate2D(data.image_prompt_template_2d || DEFAULT_IMAGE_TEMPLATE_2D);
                 // setCharacterSheet(data.character_sheet_template || DEFAULT_CHARACTER_SHEET);
                 setCharacterSheet(DEFAULT_CHARACTER_SHEET);
             }
@@ -125,9 +69,10 @@ export function PromptMasterPage() {
                 .from('user_preferences')
                 .upsert({
                     user_id: user?.id,
-                    master_prompt_description: description,
                     master_prompt_instructions: instructions,
+                    master_prompt_instructions_biblica: instructionsBiblica,
                     image_prompt_template: imageTemplate,
+                    image_prompt_template_2d: imageTemplate2D,
                     // character_sheet_template: characterSheet,
                 }, { onConflict: 'user_id' });
 
@@ -143,10 +88,11 @@ export function PromptMasterPage() {
     }
 
     function handleReset() {
-        if (confirm('Tem certeza que deseja restaurar os valores padrão?')) {
-            setDescription(DEFAULT_DESCRIPTION);
-            setInstructions(DEFAULT_INSTRUCTIONS);
-            setImageTemplate(DEFAULT_IMAGE_TEMPLATE);
+        if (confirm('Tem certeza que deseja restaurar os valores padrão de todas as abas?')) {
+            setInstructions(DEFAULT_INSTRUCTIONS_CLASSICA);
+            setInstructionsBiblica(DEFAULT_INSTRUCTIONS_BIBLICA);
+            setImageTemplate(DEFAULT_IMAGE_TEMPLATE_3D);
+            setImageTemplate2D(DEFAULT_IMAGE_TEMPLATE_2D);
             setCharacterSheet(DEFAULT_CHARACTER_SHEET);
         }
     }
@@ -195,72 +141,146 @@ export function PromptMasterPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="bg-card rounded-xl border border-border shadow-sm p-8 space-y-6"
                 >
-                    {/* Description */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                            Descrição do Sistema
-                        </label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[100px] resize-y"
-                            placeholder="Breve descrição do que o sistema faz..."
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            {description.length} caracteres
-                        </p>
+                    {/* Main Tabs Selection */}
+                    <div className="flex space-x-2 border-b border-border pb-4 mb-4">
+                        <button
+                            onClick={() => setMainTab('historias')}
+                            className={`px-6 py-2 rounded-t-lg font-bold transition-colors ${mainTab === 'historias' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
+                        >
+                            📚 Estilos de História
+                        </button>
+                        <button
+                            onClick={() => setMainTab('imagens')}
+                            className={`px-6 py-2 rounded-t-lg font-bold transition-colors ${mainTab === 'imagens' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
+                        >
+                            🖼️ Estilos de Imagem
+                        </button>
                     </div>
 
-                    {/* Instructions */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                            Instruções Completas (Histórias)
-                        </label>
-                        <textarea
-                            value={instructions}
-                            onChange={(e) => setInstructions(e.target.value)}
-                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[300px] resize-y font-mono text-sm"
-                            placeholder="Instruções detalhadas para a IA..."
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            {instructions.length} caracteres • Use este campo para definir como a IA deve criar as histórias
-                        </p>
-                    </div>
+                    {mainTab === 'historias' && (
+                        <>
+                            {/* Historia Sub Tabs */}
+                            <div className="flex space-x-2 border-b border-border pb-4 mb-6">
+                                <button
+                                    onClick={() => setHistoriaTab('classica')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${historiaTab === 'classica' ? 'bg-primary/20 text-primary' : 'bg-transparent text-muted-foreground hover:bg-secondary/50'}`}
+                                >
+                                    Histórias Infantis Clássicas
+                                </button>
+                                <button
+                                    onClick={() => setHistoriaTab('biblica')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${historiaTab === 'biblica' ? 'bg-amber-500/20 text-amber-500' : 'bg-transparent text-muted-foreground hover:bg-secondary/50'}`}
+                                >
+                                    Histórias Infantis Bíblicas
+                                </button>
+                            </div>
 
-                    {/* Image Prompt Template */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                            Template Base de Imagens
-                        </label>
-                        <textarea
-                            value={imageTemplate}
-                            onChange={(e) => setImageTemplate(e.target.value)}
-                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[300px] resize-y font-mono text-sm"
-                            placeholder="Template base para geração de imagens das cenas..."
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            {imageTemplate.length} caracteres • Este template será usado como base para gerar as imagens de cada cena
-                        </p>
-                    </div>
+                            <div className="space-y-6">
+                                {historiaTab === 'classica' && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">
+                                            Instruções de História (Clássica)
+                                        </label>
+                                        <textarea
+                                            value={instructions}
+                                            onChange={(e) => setInstructions(e.target.value)}
+                                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[300px] resize-y font-mono text-sm"
+                                            placeholder="Instruções para histórias clássicas..."
+                                        />
+                                        <p className="text-xs text-muted-foreground">{instructions.length} caracteres</p>
+                                    </div>
+                                )}
 
-                    {/* Character Sheet Oficial */}
-                    <div className="space-y-2 border-t pt-6">
-                        <label className="text-sm font-medium flex items-center gap-2">
-                            🎨 Character Sheet Oficial
-                        </label>
-                        <p className="text-xs text-muted-foreground mb-2">
-                            Use este template para criar descrições detalhadas e consistentes dos personagens
-                        </p>
-                        <textarea
-                            value={characterSheet}
-                            onChange={(e) => setCharacterSheet(e.target.value)}
-                            className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[400px] resize-y font-mono text-sm"
-                            placeholder="Template para Character Sheet..."
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            {characterSheet.length} caracteres • Substitua [NOME DO PERSONAGEM] e demais campos para cada personagem
-                        </p>
-                    </div>
+                                {historiaTab === 'biblica' && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-amber-500">
+                                            Instruções de História (Bíblica)
+                                        </label>
+                                        <textarea
+                                            value={instructionsBiblica}
+                                            onChange={(e) => setInstructionsBiblica(e.target.value)}
+                                            className="w-full px-4 py-3 bg-background text-foreground border border-amber-500/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[300px] resize-y font-mono text-sm"
+                                            placeholder="Instruções para histórias baseadas na Bíblia..."
+                                        />
+                                        <p className="text-xs text-muted-foreground">{instructionsBiblica.length} caracteres</p>
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {mainTab === 'imagens' && (
+                        <>
+                            {/* Imagem Sub Tabs */}
+                            <div className="flex space-x-2 border-b border-border pb-4 mb-6">
+                                <button
+                                    onClick={() => setImagemTab('3d')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${imagemTab === '3d' ? 'bg-primary/20 text-primary' : 'bg-transparent text-muted-foreground hover:bg-secondary/50'}`}
+                                >
+                                    Estilo 3D Pixar
+                                </button>
+                                <button
+                                    onClick={() => setImagemTab('2d')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${imagemTab === '2d' ? 'bg-blue-500/20 text-blue-500' : 'bg-transparent text-muted-foreground hover:bg-secondary/50'}`}
+                                >
+                                    2D Cartoon
+                                </button>
+                            </div>
+
+                            <div className="space-y-6">
+                                {imagemTab === '3d' && (
+                                    <>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">
+                                                Template Base de Imagens (3D Pixar)
+                                            </label>
+                                            <textarea
+                                                value={imageTemplate}
+                                                onChange={(e) => setImageTemplate(e.target.value)}
+                                                className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[300px] resize-y font-mono text-sm"
+                                                placeholder="Template para imagens 3D Pixar..."
+                                            />
+                                            <p className="text-xs text-muted-foreground">{imageTemplate.length} caracteres</p>
+                                        </div>
+
+                                        {/* Character Sheet Oficial */}
+                                        <div className="space-y-2 border-t pt-6">
+                                            <label className="text-sm font-medium flex items-center gap-2">
+                                                🎨 Character Sheet Oficial (3D Pixar)
+                                            </label>
+                                            <p className="text-xs text-muted-foreground mb-2">
+                                                Use este template para criar descrições detalhadas e consistentes dos personagens
+                                            </p>
+                                            <textarea
+                                                value={characterSheet}
+                                                onChange={(e) => setCharacterSheet(e.target.value)}
+                                                className="w-full px-4 py-3 bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-h-[400px] resize-y font-mono text-sm"
+                                                placeholder="Template para Character Sheet..."
+                                            />
+                                            <p className="text-xs text-muted-foreground">
+                                                {characterSheet.length} caracteres • Substitua [NOME DO PERSONAGEM] e demais campos para cada personagem
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+
+                                {imagemTab === '2d' && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-blue-500">
+                                            Template Base de Imagens (2D Cartoon)
+                                        </label>
+                                        <textarea
+                                            value={imageTemplate2D}
+                                            onChange={(e) => setImageTemplate2D(e.target.value)}
+                                            className="w-full px-4 py-3 bg-background text-foreground border border-blue-500/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[300px] resize-y font-mono text-sm"
+                                            placeholder="Template para imagens 2D Cartoon..."
+                                        />
+                                        <p className="text-xs text-muted-foreground">{imageTemplate2D.length} caracteres</p>
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
 
                     {/* Buttons */}
                     <div className="flex gap-3 pt-4">

@@ -13,13 +13,9 @@ interface ConfigPageProps {
     onComplete: (config: StoryConfig) => void;
 }
 
-const VISUAL_STYLES: { value: VisualStyle; label: string; icon: string }[] = [
+export const VISUAL_STYLES: { value: VisualStyle; label: string; icon: string }[] = [
     { value: 'Estilo Pixar 3D', label: 'Estilo Pixar 3D', icon: '🎬' },
-    { value: 'Aquarela Delicada', label: 'Aquarela Delicada', icon: '🎨' },
-    { value: 'Desenho Animado Retrô', label: 'Desenho Animado Retrô', icon: '📺' },
-    { value: 'Anime Japonês', label: 'Anime Japonês', icon: '🎌' },
-    { value: 'Esboço a Lápis', label: 'Esboço a Lápis', icon: '✏️' },
-    { value: 'Ilustração de Livro Clássico', label: 'Ilustração de Livro Clássico', icon: '📖' },
+    { value: 'Estilo 2D Cartoon', label: 'Estilo 2D Cartoon', icon: '🖍️' },
 ];
 
 export function ConfigPage({ onComplete }: ConfigPageProps) {
@@ -28,6 +24,7 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
         duration: 5,
         sceneCount: 20,
         visualStyle: 'Estilo Pixar 3D',
+        theme: 'classica',
         ageGroup: '3-5',
         tone: 'aventura'
     });
@@ -88,6 +85,38 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                         </p>
                     </div>
 
+                    {/* Theme */}
+                    <div>
+                        <label className="block text-sm font-semibold text-muted-foreground mb-3">
+                            TEMA DA HISTÓRIA
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {[
+                                { value: 'classica', label: '🧚‍♀️ História Infantil Clássica', desc: 'Aventuras lúdicas' },
+                                { value: 'biblica', label: '📖 História Bíblica', desc: 'Ensinamentos e princípios' },
+                            ].map((theme) => (
+                                <button
+                                    key={theme.value}
+                                    type="button"
+                                    onClick={() => {
+                                        setConfig({
+                                            ...config,
+                                            theme: theme.value,
+                                            visualStyle: theme.value === 'biblica' ? 'Estilo 2D Cartoon' : 'Estilo Pixar 3D'
+                                        });
+                                    }}
+                                    className={`p-4 rounded-xl border-2 transition-all flex flex-col text-left ${config.theme === theme.value
+                                        ? 'border-primary bg-primary/5 shadow-lg'
+                                        : 'border-border hover:border-primary/50 bg-card hover:bg-secondary/50'
+                                        }`}
+                                >
+                                    <span className="font-bold text-lg mb-1">{theme.label}</span>
+                                    <span className="text-sm text-muted-foreground">{theme.desc}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     {/* Duration Slider */}
                     <div>
                         <label className="block text-sm font-semibold text-muted-foreground mb-2">
@@ -101,7 +130,7 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                                 max="10"
                                 value={config.duration}
                                 onChange={(e) => setConfig({ ...config, duration: parseInt(e.target.value) })}
-                                className="flex-1 h-2 bg-secondary rounded-lg appearance-none cursor-pointer slider-thumb"
+                                className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer slider-thumb"
                             />
                             <span className="text-sm text-muted-foreground">LONGO</span>
                         </div>
@@ -122,8 +151,8 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                                     type="button"
                                     onClick={() => setConfig({ ...config, sceneCount: count })}
                                     className={`py-3 px-4 rounded-xl font-semibold transition-all ${config.sceneCount === count
-                                        ? 'bg-primary text-primary-foreground shadow-lg scale-105'
-                                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                                        ? 'bg-[#FF5722] text-white shadow-lg scale-105'
+                                        : 'bg-transparent text-white hover:bg-secondary/50'
                                         }`}
                                 >
                                     {count} cenas
@@ -137,7 +166,7 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                         <label className="block text-sm font-semibold text-muted-foreground mb-3">
                             ESCOLHA O ESTILO DE ARTE
                         </label>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {VISUAL_STYLES.map((style) => (
                                 <button
                                     key={style.value}
@@ -164,7 +193,7 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         disabled={!config.title.trim()}
-                        className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg hover:bg-primary/90 transition-colors disabled:bg-muted disabled:cursor-not-allowed shadow-lg"
+                        className="w-full py-4 bg-[#FF5722] text-white rounded-xl font-bold text-lg hover:bg-[#F4511E] transition-colors disabled:bg-muted disabled:cursor-not-allowed shadow-lg"
                     >
                         <span className="flex items-center justify-center gap-2">
                             <Sparkles className="w-5 h-5" />
@@ -181,7 +210,7 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                     width: 24px;
                     height: 24px;
                     border-radius: 50%;
-                    background: hsl(var(--primary));
+                    background: #FF5722;
                     cursor: pointer;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }
@@ -189,7 +218,7 @@ export function ConfigPage({ onComplete }: ConfigPageProps) {
                     width: 24px;
                     height: 24px;
                     border-radius: 50%;
-                    background: hsl(var(--primary));
+                    background: #FF5722;
                     cursor: pointer;
                     border: none;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);

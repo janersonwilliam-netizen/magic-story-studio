@@ -10,6 +10,8 @@ import { StoryConfig, StoryWithNarration } from '../../types/studio';
 import { generateStoryWithGemini } from '../../services/gemini';
 import { generateAudioNarration } from '../../services/tts';
 import { Loader2, Check, Sparkles, Volume2 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface NarrationPageProps {
     config: StoryConfig;
@@ -19,6 +21,7 @@ interface NarrationPageProps {
 }
 
 export function NarrationPage({ config, existingStory, onComplete, onBack }: NarrationPageProps) {
+    const { user } = useAuth();
     const [generating, setGenerating] = useState(!existingStory?.storyText);
     const [storyText, setStoryText] = useState(existingStory?.storyText || '');
     const [error, setError] = useState('');
@@ -44,11 +47,33 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
         try {
             console.log('[NarrationPage] Generating story with config:', config);
 
+            let customInstructions = undefined;
+            if (user?.id) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_preferences')
+                        .select('master_prompt_instructions, master_prompt_instructions_biblica')
+                        .eq('user_id', user.id)
+                        .single();
+
+                    if (data && !error) {
+                        customInstructions = config.theme === 'biblica'
+                            ? data.master_prompt_instructions_biblica
+                            : data.master_prompt_instructions;
+                    }
+                } catch (err) {
+                    console.error('[NarrationPage] Error fetching user preferences:', err);
+                }
+            }
+
             const result = await generateStoryWithGemini({
                 title: config.title,
                 age_group: config.ageGroup || '3-5',
                 tone: config.tone || 'aventura',
-                duration: config.duration
+                theme: config.theme || 'classica',
+                duration: config.duration,
+                storyIdea: config.storyIdea,
+                customSystemInstructions: customInstructions
             });
 
             setStoryText(result.story_text);

@@ -17,7 +17,9 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
     const [formData, setFormData] = useState({
         title: '',
         age_group: '6-8',
+        theme: 'classica',
         tone: 'aventura',
+        visual_style: 'Estilo Pixar 3D',
         duration: 3, // Duração da história em minutos (texto)
         scene_count: 20, // Quantidade de cenas desejada (15, 20, 25)
         custom_instructions: '',
@@ -49,7 +51,8 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                     title: formData.title.trim(),
                     duration: formData.duration,
                     sceneCount: formData.scene_count,
-                    visualStyle: 'Estilo Pixar 3D' as const,
+                    visualStyle: formData.visual_style as any,
+                    theme: formData.theme,
                     ageGroup: formData.age_group,
                     tone: formData.tone,
                     storyIdea: formData.custom_instructions.trim() || undefined
@@ -153,6 +156,37 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                             </select>
                         </div>
 
+                        {/* Tema da História */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Tema da História *</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {[
+                                    { value: 'classica', label: '🧚‍♀️ História Infantil', desc: 'Aventuras lúdicas clássicas' },
+                                    { value: 'biblica', label: '📖 História Bíblica', desc: 'Ensinamentos e princípios bíblicos' },
+                                ].map((option) => (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData({
+                                                ...formData,
+                                                theme: option.value,
+                                                visual_style: option.value === 'biblica' ? 'Estilo 2D Cartoon' : 'Estilo Pixar 3D'
+                                            });
+                                        }}
+                                        disabled={loading}
+                                        className={`p-4 border-2 rounded-lg text-left transition-all ${formData.theme === option.value
+                                            ? 'border-[#FF5722] bg-[#FF5722]/10'
+                                            : 'border-transparent hover:border-[#FF5722]/50'
+                                            }`}
+                                    >
+                                        <div className="font-medium">{option.label}</div>
+                                        <div className="text-xs text-muted-foreground">{option.desc}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* Tom da História */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Tom da História *</label>
@@ -168,8 +202,8 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                                         onClick={() => setFormData({ ...formData, tone: option.value })}
                                         disabled={loading}
                                         className={`p-4 border-2 rounded-lg text-left transition-all ${formData.tone === option.value
-                                            ? 'border-[#FF0000] bg-red-50'
-                                            : 'border-gray-200 hover:border-red-300'
+                                            ? 'border-[#FF5722] bg-[#FF5722]/10'
+                                            : 'border-transparent hover:border-[#FF5722]/50'
                                             }`}
                                     >
                                         <div className="font-medium">{option.label}</div>
@@ -202,7 +236,7 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                                     onChange={(e) =>
                                         setFormData({ ...formData, duration: parseInt(e.target.value) })
                                     }
-                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#FF0000]"
+                                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer slider-thumb-form"
                                     disabled={loading}
                                 />
                                 <div className="flex justify-between text-xs text-muted-foreground mt-2">
@@ -233,8 +267,8 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                                         onClick={() => setFormData({ ...formData, scene_count: count })}
                                         disabled={loading}
                                         className={`p-3 border-2 rounded-lg text-center transition-all ${formData.scene_count === count
-                                            ? 'border-[#FF0000] bg-red-50 text-[#FF0000] font-bold'
-                                            : 'border-gray-200 hover:border-red-300 text-gray-600'
+                                            ? 'border-[#FF5722] bg-[#FF5722] text-white font-bold'
+                                            : 'border-transparent bg-transparent hover:bg-slate-800 text-white'
                                             }`}
                                     >
                                         <div className="text-lg">{count}</div>
@@ -247,15 +281,28 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                             </p>
                         </div>
 
-                        {/* Estilo Visual (Read-only) */}
+                        {/* Estilo Visual */}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">Estilo Visual</label>
-                            <div className="px-4 py-2 bg-gray-50 border rounded-lg text-muted-foreground">
-                                3D Pixar/DreamWorks
+                            <label className="text-sm font-medium">Estilo Visual *</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {[
+                                    { value: 'Estilo Pixar 3D', label: '🎬 3D Pixar/DreamWorks' },
+                                    { value: 'Estilo 2D Cartoon', label: '🖍️ 2D Cartoon Animado' },
+                                ].map((option) => (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, visual_style: option.value })}
+                                        disabled={loading}
+                                        className={`p-4 border-2 rounded-lg text-left transition-all ${formData.visual_style === option.value
+                                            ? 'border-[#FF5722] bg-[#FF5722]/10'
+                                            : 'border-transparent hover:border-[#FF5722]/50'
+                                            }`}
+                                    >
+                                        <div className="font-medium">{option.label}</div>
+                                    </button>
+                                ))}
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Mais estilos em breve!
-                            </p>
                         </div>
 
                         {/* Observações / Instruções Personalizadas */}
@@ -290,7 +337,7 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="flex-1 px-6 py-3 bg-[#FF0000] text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                className="flex-1 px-6 py-3 bg-[#FF5722] text-white rounded-lg font-bold hover:bg-[#F4511E] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                             >
                                 {loading ? (
                                     <>

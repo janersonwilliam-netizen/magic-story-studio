@@ -11,6 +11,7 @@ import { MainLayout } from './components/MainLayout';
 import { SettingsPage } from './components/SettingsPage';
 import { PromptMasterPage } from './components/PromptMasterPage';
 import ImageTestPage from './components/ImageTestPage';
+import { IdeaResearchPage } from './components/IdeaResearchPage';
 
 export default function App() {
     return (
@@ -35,6 +36,7 @@ export default function App() {
                         <Route path="/settings" element={<SettingsPage />} />
                         <Route path="/prompt-master" element={<PromptMasterPage />} />
                         <Route path="/image-test" element={<ImageTestPage />} />
+                        <Route path="/ideas" element={<IdeaResearchPage />} />
                     </Route>
 
                     {/* Default redirect */}

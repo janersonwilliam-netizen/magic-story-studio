@@ -17,7 +17,7 @@ if (!apiKey) {
  * Nano Banana works better with concise, direct English prompts
  * NOW DYNAMIC - extracts character info from the prompt itself
  */
-function translateAndCompactPrompt(prompt: string): string {
+function translateAndCompactPrompt(prompt: string, styleConfig?: string): string {
     // If the prompt doesn't follow the internal structure (CENA/EMOÇÃO), it means the user edited it manually
     // In this case, we use the prompt exactly as is (just truncating for URL safety)
     if (!prompt.match(/CENA:/i) && !prompt.match(/PERSONAGEM:/i) && !prompt.match(/EMOÇÃO:/i)) {
@@ -191,7 +191,12 @@ function translateAndCompactPrompt(prompt: string): string {
     optimized += `Emotion: ${emotionEN}. `;
 
     // Style (concise)
-    optimized += '3D Pixar style, cinematic lighting, vibrant colors, high quality render, no watermarks, no logos, aspect ratio 16:9 wide shot. ';
+    if (styleConfig === 'Estilo 2D Cartoon') {
+        optimized += 'Premium 2D cartoon illustration, modern mobile game art style, vibrant colors, soft colorful shading, crisp clean outlines, magical storybook atmosphere, detailed background with glowing highlights, cute friendly design, NO 3D render, NO CGI, aspect ratio 16:9 wide shot. ';
+    } else {
+        // Default to Pixar
+        optimized += '3D Pixar style, cinematic lighting, vibrant colors, high quality render, no watermarks, no logos, aspect ratio 16:9 wide shot. ';
+    }
 
     // Final cleanup
     optimized = optimized.replace(/\s+/g, ' ').trim();
@@ -210,14 +215,14 @@ function translateAndCompactPrompt(prompt: string): string {
  * Generate an image using Gemini 2.5 Flash Image (Imagen 3)
  * Returns a URL to the generated image
  */
-export async function generateImageWithNanoBanana(prompt: string): Promise<string> {
+export async function generateImageWithNanoBanana(prompt: string, styleConfig?: string): Promise<string> {
 
     if (!apiKey) {
         throw new Error('API Key do Google não configurada. Configure VITE_GEMINI_API_KEY no arquivo .env');
     }
 
     // Translate and compact prompt for better results
-    const optimizedPrompt = translateAndCompactPrompt(prompt);
+    const optimizedPrompt = translateAndCompactPrompt(prompt, styleConfig);
 
     console.log('[Gemini Image] Original prompt length:', prompt.length);
     console.log('[Gemini Image] Optimized prompt length:', optimizedPrompt.length);
@@ -349,7 +354,8 @@ export async function generateImageWithNanoBanana(prompt: string): Promise<strin
 export async function generateImageWithReferences(
     prompt: string,
     referenceImages: string[],
-    characterStatuses?: string[]
+    characterStatuses?: string[],
+    styleConfig?: string
 ): Promise<string> {
     if (!apiKey) {
         throw new Error('API Key do Google não configurada. Configure VITE_GEMINI_API_KEY no arquivo .env');
@@ -357,7 +363,7 @@ export async function generateImageWithReferences(
 
     if (referenceImages.length === 0) {
         console.warn('[Gemini 3 Pro Image] No reference images provided, falling back to standard generation');
-        return generateImageWithNanoBanana(prompt);
+        return generateImageWithNanoBanana(prompt, styleConfig);
     }
 
     if (referenceImages.length > 5) {
@@ -366,7 +372,7 @@ export async function generateImageWithReferences(
     }
 
     // Translate and compact prompt
-    const optimizedPrompt = translateAndCompactPrompt(prompt);
+    const optimizedPrompt = translateAndCompactPrompt(prompt, styleConfig);
 
     // Add EXPLICIT consistency AND child-friendly instructions
     const enhancedPrompt = `SCENE ACTION (PRIORITY 1): ${optimizedPrompt}
@@ -523,7 +529,7 @@ CRITICAL STYLE REQUIREMENTS (High Priority):
             console.warn('[Gemini 3 Pro Image] Failed. Falling back to Gemini 2.5 Flash Image (Nano Banana).');
             try {
                 // Use the original prompt for fallback, losing reference consistency but getting an image
-                return await generateImageWithNanoBanana(prompt);
+                return await generateImageWithNanoBanana(prompt, styleConfig);
             } catch (fallbackError: any) {
                 console.error('[Gemini 3 Pro Image] Fallback failed:', fallbackError);
                 throw new Error(`Falha na geração com referências e fallback: ${error.message}.`);
@@ -534,5 +540,5 @@ CRITICAL STYLE REQUIREMENTS (High Priority):
     // This part essentially becomes unreachable due to the fallback in the loop's catch, 
     // but kept for safety if loop breaks unexpectedly
     console.warn('[Gemini 3 Pro Image] Loop finished without result. Falling back.');
-    return generateImageWithNanoBanana(prompt);
+    return generateImageWithNanoBanana(prompt, styleConfig);
 }

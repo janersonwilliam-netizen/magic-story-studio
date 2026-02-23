@@ -11,6 +11,7 @@ export interface StoryConfig {
     duration: number; // minutes (2-10)
     sceneCount: number; // desired number of scenes (15, 20, 25)
     visualStyle: VisualStyle;
+    theme?: string; // e.g., 'classica' (Infantil), 'biblica' (Bíblica)
     voiceName?: string; // Gemini TTS voice (Kore, Charon, Aoede, Fenrir, Puck)
     emotion?: string; // Narration emotion (cheerfully, sadly, excitedly, calmly, mysteriously, warmly)
     ageGroup?: string; // '3-5', '6-8', '9-12'
@@ -20,6 +21,7 @@ export interface StoryConfig {
 
 export type VisualStyle =
     | 'Estilo Pixar 3D'
+    | 'Estilo 2D Cartoon'
     | 'Aquarela Delicada'
     | 'Desenho Animado Retrô'
     | 'Anime Japonês'
