@@ -380,23 +380,32 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
     /**
      * Download a single image with a descriptive filename
      */
-    const downloadImage = (imageUrl: string, sceneNumber: number) => {
+    const downloadImage = async (imageUrl: string, sceneNumber: number) => {
         try {
-            // Convert data URL to blob
-            const byteString = atob(imageUrl.split(',')[1]);
-            const mimeString = imageUrl.split(',')[0].split(':')[1].split(';')[0];
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
-            const blob = new Blob([ab], { type: mimeString });
+            let blob: Blob;
 
-            // Create download link
+            if (imageUrl.startsWith('data:')) {
+                // Data URL (base64 from Gemini) - convert to blob
+                const byteString = atob(imageUrl.split(',')[1]);
+                const mimeString = imageUrl.split(',')[0].split(':')[1].split(';')[0];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                blob = new Blob([ab], { type: mimeString });
+            } else {
+                // HTTP URL (from Supabase Storage) - fetch as blob
+                const response = await fetch(imageUrl);
+                if (!response.ok) throw new Error(`Erro ao baixar: ${response.status}`);
+                blob = await response.blob();
+            }
+
+            // Create download link with proper filename
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `cena_${sceneNumber}.png`;
+            link.download = `cena_${String(sceneNumber).padStart(2, '0')}.png`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -405,12 +414,10 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
             console.log(`[ImagesPage] Downloaded scene ${sceneNumber}`);
         } catch (error) {
             console.error('[ImagesPage] Error downloading image:', error);
+            alert(`Erro ao baixar imagem da cena ${sceneNumber}. Tente novamente.`);
         }
     };
 
-    /**
-     * Download all completed images as a zip (simplified: download one by one)
-     */
     /**
      * Download all completed images as a zip
      */
@@ -419,22 +426,42 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
         let count = 0;
 
         // Add images to zip
-        storyWithScenes.scenes.forEach((scene) => {
+        for (const scene of storyWithScenes.scenes) {
             const status = generationStatus[scene.id];
             if (status?.status === 'complete' && status.imageUrl) {
-                const imgData = status.imageUrl.split(',')[1];
-                zip.file(`cena_${scene.order}.png`, imgData, { base64: true });
-                count++;
+                try {
+                    const filename = `cena_${String(scene.order).padStart(2, '0')}.png`;
+
+                    if (status.imageUrl.startsWith('data:')) {
+                        // Base64 data URL
+                        const imgData = status.imageUrl.split(',')[1];
+                        zip.file(filename, imgData, { base64: true });
+                    } else {
+                        // HTTP URL - fetch as blob
+                        const response = await fetch(status.imageUrl);
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            zip.file(filename, blob);
+                        }
+                    }
+                    count++;
+                } catch (err) {
+                    console.warn(`[ImagesPage] Failed to add scene ${scene.order} to zip:`, err);
+                }
             }
-        });
+        }
 
         if (count > 0) {
             try {
+                const storyTitle = storyWithScenes.title
+                    ?.replace(/[^a-zA-Z0-9\u00C0-\u00FF ]/g, '')
+                    .replace(/\s+/g, '_')
+                    .substring(0, 30) || 'historia';
                 const content = await zip.generateAsync({ type: 'blob' });
                 const url = window.URL.createObjectURL(content);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `imagens_historia.zip`;
+                link.download = `${storyTitle}_imagens.zip`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -442,6 +469,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 console.log(`[ImagesPage] Downloaded zip with ${count} images`);
             } catch (error) {
                 console.error('[ImagesPage] Error generating zip:', error);
+                alert('Erro ao gerar arquivo ZIP. Tente novamente.');
             }
         }
     };

@@ -59,70 +59,20 @@ export default function ImageTestPage() {
     }, [user]);
 
     const loadImageTemplate = async () => {
-        if (!user) return;
-
-        try {
-            const { data, error } = await supabase
-                .from('user_preferences')
-                .select('image_prompt_template')
-                .eq('user_id', user.id)
-                .single();
-
-            if (error) throw error;
-
-            if (data?.image_prompt_template) {
-                setImageTemplate(data.image_prompt_template);
-                console.log('[TEST] Template carregado do banco:', data.image_prompt_template.substring(0, 100) + '...');
-            } else {
-                // Template dinâmico padrão - funciona para qualquer personagem
-                const defaultTemplate = `PERSONAGEM: [PERSONAGEM]
-
-IMPORTANTE: Gere o personagem SEM anomalias físicas. Proporções corretas, anatomia realista para desenho animado 3D, sem deformidades, sem membros extras. Postura natural, NUNCA em posições impossíveis.
-
-CENA: [CENA]
-
-EMOÇÃO: [EMOÇÃO]
-
-COMPOSIÇÃO: Horizontal, 1920x1080
-
-ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alta qualidade, texturas hiper-detalhadas`;
-                setImageTemplate(defaultTemplate);
-                console.log('[TEST] Usando template padrão dinâmico');
-            }
-        } catch (err) {
-            console.error('[TEST] Erro ao carregar template:', err);
+        // Template dinâmico padrão - funciona para qualquer personagem
+        const defaultTemplate = `3D Pixar Style Character, [PERSONAGEM], [EMOÇÃO], cinematic lighting, vibrant colors, high quality render, 8k, detailed background, [CENA]`;
+        setImageTemplate(defaultTemplate);
+        
+        // Initial character for testing
+        if (!characterDescription) {
+            setCharacterDescription('A cute small robot with big blue digital eyes, shiny white metallic body, friendly smile');
         }
     };
 
-    const resetTemplate = async () => {
-        // Template dinâmico padrão - funciona para qualquer personagem
-        const defaultTemplate = `PERSONAGEM: [PERSONAGEM]
-
-IMPORTANTE: Gere o personagem SEM anomalias físicas. Proporções corretas, anatomia realista para desenho animado 3D, sem deformidades, sem membros extras. Postura natural, NUNCA em posições impossíveis.
-
-CENA: [CENA]
-
-EMOÇÃO: [EMOÇÃO]
-
-COMPOSIÇÃO: Horizontal, 1920x1080
-
-ESTILO: 3D Pixar/DreamWorks, iluminação cinematográfica, cores vibrantes, alta qualidade, texturas hiper-detalhadas`;
-
+    const resetTemplate = () => {
+        const defaultTemplate = `3D Pixar Style Character, [PERSONAGEM], [EMOÇÃO], cinematic lighting, vibrant colors, high quality render, 8k, detailed background, [CENA]`;
         setImageTemplate(defaultTemplate);
-
-        if (user) {
-            try {
-                await supabase
-                    .from('user_preferences')
-                    .update({ image_prompt_template: defaultTemplate })
-                    .eq('user_id', user.id);
-
-                console.log('[TEST] Template resetado com sucesso!');
-                alert('Template resetado para o padrão dinâmico!');
-            } catch (err) {
-                console.error('[TEST] Erro ao resetar template:', err);
-            }
-        }
+        alert('Template resetado!');
     };
 
     const handleGeneratePrompt = async (sceneIndex: number) => {

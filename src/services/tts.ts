@@ -86,34 +86,52 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
         voiceName = 'Kore',
     } = params;
 
-    try {
-        const ai = new GoogleGenAI({ apiKey });
-        const promptText = `Say ${emotion}: ${text}`;
+    const maxRetries = 3;
+    let attempt = 0;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-preview-tts',
-            contents: [{ parts: [{ text: promptText }] }],
-            config: {
-                responseModalities: ['AUDIO'],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: {
-                            voiceName: voiceName as string
+    while (attempt < maxRetries) {
+        try {
+            const ai = new GoogleGenAI({ apiKey });
+            const promptText = `Say ${emotion}: ${text}`;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-preview-tts',
+                contents: [{ parts: [{ text: promptText }] }],
+                config: {
+                    responseModalities: ['AUDIO'],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: {
+                                voiceName: voiceName as string
+                            }
                         }
                     }
                 }
+            });
+
+            const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (!audioData) throw new Error('No audio content returned from Gemini TTS API');
+
+            return `data:audio/wav;base64,${audioData}`;
+
+        } catch (error: any) {
+            const errorStr = JSON.stringify(error) || error.message || '';
+            const isRetryable = errorStr.includes('429') || errorStr.includes('503') || errorStr.includes('RESOURCE_EXHAUSTED') || errorStr.includes('UNAVAILABLE');
+
+            if (isRetryable && attempt < maxRetries - 1) {
+                attempt++;
+                const delay = 2000 * Math.pow(2, attempt);
+                console.warn(`[Gemini TTS] Error (429/503). Retrying in ${delay / 1000}s... (Attempt ${attempt}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
             }
-        });
 
-        const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!audioData) throw new Error('No audio content returned from Gemini TTS API');
-
-        return `data:audio/wav;base64,${audioData}`;
-
-    } catch (error: any) {
-        console.error('[Gemini TTS] Error generating audio:', error);
-        throw new Error(`Failed to generate audio with Gemini TTS: ${error.message}`);
+            console.error('[Gemini TTS] Fatal error generating audio:', error);
+            throw new Error(`Failed to generate audio with Gemini TTS: ${error.message}`);
+        }
     }
+
+    throw new Error('Failed to generate audio after multiple attempts');
 }
 
 /**

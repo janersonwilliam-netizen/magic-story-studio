@@ -5,8 +5,20 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import { generateImageVertex } from './vertex_service';
+
+export function isVertexConfigured(): boolean {
+    // Check both standard Vite env and the global fallback injection
+    const url = import.meta.env.VITE_VERTEX_AI_URL || (window as any).VITE_VERTEX_AI_URL || '';
+    return url.length > 5; // Simple check for a valid URL
+}
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+console.log('[Debug] Vertex Config:', {
+    url: import.meta.env.VITE_VERTEX_AI_URL,
+    configured: isVertexConfigured()
+});
 
 if (!apiKey) {
     console.warn('Google API key not configured. Image generation will not work.');
@@ -212,11 +224,11 @@ function translateAndCompactPrompt(prompt: string, styleConfig?: string): string
 }
 
 /**
- * Generate an image using Gemini 2.5 Flash Image (Imagen 3)
- * Returns a URL to the generated image
+ * Generate an image using Gemini Image models
+ * Uses VERIFIED model names from ListModels API
+ * Returns a data URL of the generated image
  */
 export async function generateImageWithNanoBanana(prompt: string, styleConfig?: string): Promise<string> {
-
     if (!apiKey) {
         throw new Error('API Key do Google não configurada. Configure VITE_GEMINI_API_KEY no arquivo .env');
     }
@@ -224,123 +236,85 @@ export async function generateImageWithNanoBanana(prompt: string, styleConfig?: 
     // Translate and compact prompt for better results
     const optimizedPrompt = translateAndCompactPrompt(prompt, styleConfig);
 
-    console.log('[Gemini Image] Original prompt length:', prompt.length);
-    console.log('[Gemini Image] Optimized prompt length:', optimizedPrompt.length);
     console.log('[Gemini Image] Optimized prompt:', optimizedPrompt);
 
-    // Retry logic for Safety/Other blocks
-    const maxRetries = 2; // 1 normal + 1 simplified
+    const genAI = new GoogleGenAI({ apiKey });
+
+    // VERIFIED model names from ListModels API (queried 2026-04-10)
+    // These are the ONLY models that support responseModalities: ['IMAGE']
+    const imageModels = [
+        'gemini-2.5-flash-image',           // "Nano Banana" - primary
+        'gemini-3.1-flash-image-preview',    // "Nano Banana 2" - backup
+        'gemini-3-pro-image-preview',        // "Nano Banana Pro" - backup 2
+    ];
+
     let lastError: any = null;
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
+    for (const model of imageModels) {
         try {
-            // Use optimized prompt for first attempt, simplified for retry
-            let currentPrompt = optimizedPrompt;
-            if (attempt > 0) {
-                console.log('[Gemini Image] Retrying with SIMPLIFIED prompt due to previous block/error');
-                // Create a very safe, simple prompt
-                // Remove potential trigger words and keep it basic
-                const safeBase = prompt.substring(0, 200).replace(/[^\w\s\u00C0-\u00FF]/g, ' '); // Keep accents
-                currentPrompt = `Cute cartoon character illustration: ${safeBase}. Simple, flat color background.`;
-                console.log('[Gemini Image] Simplified prompt:', currentPrompt);
-            }
-
-            console.log(`[Gemini Image] Generating (Attempt ${attempt + 1})...`);
-
-            const genAI = new GoogleGenAI({ apiKey });
-
-            // Use Gemini 2.5 Flash Image (Imagen 3) for image generation
-            const model = 'gemini-2.5-flash-image';
+            console.log(`[Gemini Image] Trying model: ${model}...`);
 
             const result = await genAI.models.generateContent({
                 model,
                 config: {
                     responseModalities: ['IMAGE'],
-                    imageConfig: {
-                        aspectRatio: '16:9'
-                    }
                 },
                 contents: [{
                     role: 'user',
-                    parts: [{
-                        text: currentPrompt
-                    }]
+                    parts: [{ text: optimizedPrompt }]
                 }]
             });
 
-            console.log('[Gemini Image] Generation complete');
+            // Extract image from response
+            if (result.candidates && result.candidates.length > 0) {
+                const candidate = result.candidates[0];
 
-            // The @google/genai SDK returns candidates directly in the result
-            const response = result;
-
-            // Check for safety issues in candidates
-            if (response.candidates && response.candidates.length > 0) {
-                const candidate = response.candidates[0];
-
-                // Check finish reason
-                if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION' || candidate.finishReason === 'OTHER') {
-                    console.error(`[Gemini Image] Generation blocked. Reason: ${candidate.finishReason}`, candidate.safetyRatings);
-                    // If it's the last attempt, throw
-                    if (attempt === maxRetries - 1) {
-                        throw new Error(`Imagem bloqueada. Motivo: ${candidate.finishReason}. Tente outro prompt.`);
-                    } else {
-                        // Continue to next attempt
-                        console.warn('[Gemini Image] Blocked. Will retry with simplified prompt.');
-                        continue;
-                    }
+                // Check for safety blocks
+                if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION') {
+                    console.warn(`[Gemini Image] Blocked by ${model}: ${candidate.finishReason}`);
+                    lastError = new Error(`Imagem bloqueada. Motivo: ${candidate.finishReason}`);
+                    continue; // Try next model
                 }
 
                 if (candidate.content && candidate.content.parts) {
                     for (const part of candidate.content.parts) {
-                        // Check if this part contains inline image data
                         if (part.inlineData && part.inlineData.data) {
                             const mimeType = part.inlineData.mimeType || 'image/png';
-                            const base64Data = part.inlineData.data;
-                            const dataUrl = `data:${mimeType};base64,${base64Data}`;
-
-                            console.log('[Gemini Image] Image generated successfully via inline data');
+                            const dataUrl = `data:${mimeType};base64,${part.inlineData.data}`;
+                            console.log(`[Gemini Image] ✅ Success with model: ${model}`);
                             return dataUrl;
                         }
-
-                        // Check if there's a file data reference
                         if (part.fileData && part.fileData.fileUri) {
-                            console.log('[Gemini Image] Image generated with file URI:', part.fileData.fileUri);
+                            console.log(`[Gemini Image] ✅ Success (file URI) with model: ${model}`);
                             return part.fileData.fileUri;
                         }
                     }
                 }
             }
 
-            // If we get here without a throw/return
-            if (attempt === maxRetries - 1) {
-                console.error('[Gemini Image] No image data found in response', response);
-                const feedback = (response as any).promptFeedback;
-                let errorMsg = 'O Gemini não retornou uma imagem.';
-                if (feedback && feedback.blockReason) {
-                    errorMsg = `Geração bloqueada. Motivo: ${feedback.blockReason}`;
-                }
-                throw new Error(errorMsg);
+            console.warn(`[Gemini Image] No image data from ${model}, trying next...`);
+            lastError = new Error(`Modelo ${model} não retornou imagem`);
+
+        } catch (err: any) {
+            console.warn(`[Gemini Image] Model ${model} failed:`, err.message);
+            lastError = err;
+
+            // On quota errors (429), wait 5s before trying next model
+            if (err.message?.includes('429') || err.message?.includes('quota')) {
+                console.log('[Gemini Image] Quota hit, waiting 5s...');
+                await new Promise(r => setTimeout(r, 5000));
             }
-
-        } catch (error: any) {
-            console.error(`[Gemini Image] Error (Attempt ${attempt + 1}):`, error);
-            lastError = error;
-
-            // If it's not a block error (e.g. network), maybe don't retry? 
-            // But 'OTHER' often comes as an error too.
-            // Let's retry on almost everything for now to be safe, except maybe auth errors
-            if (attempt < maxRetries - 1) {
+            // On 404, skip immediately to next model
+            if (err.message?.includes('404') || err.message?.includes('not found')) {
                 continue;
             }
+            // On other errors, also try next model
+            continue;
         }
     }
 
-    // Final error throw
-    const finalMsg = lastError?.message || 'Erro desconhecido ao gerar imagem';
-    if (finalMsg.includes('bloqueada') || finalMsg.includes('API Key')) {
-        throw lastError; // Preserve original error
-    }
-    throw new Error(`Erro ao gerar imagem com Gemini após tentativas: ${finalMsg}`);
+    // All models failed
+    throw new Error(`Erro ao gerar imagem com Gemini após tentativas: ${lastError?.message || 'Todos os modelos falharam'}`);
 }
 
 /**

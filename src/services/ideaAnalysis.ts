@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { VideoResult } from "./youtube";
-
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+import { withModelFallback, PRIMARY_MODELS } from "../lib/gemini-utils";
 
 export interface IdeaAnalysis {
     viralReason: string;
@@ -12,13 +10,6 @@ export interface IdeaAnalysis {
 }
 
 export const analyzeVideoIdea = async (video: VideoResult): Promise<IdeaAnalysis> => {
-    if (!API_KEY) {
-        throw new Error("Chave da API Gemini não encontrada. Verifique VITE_GEMINI_API_KEY no .env");
-    }
-
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-
     const prompt = `
     Analise o seguinte vídeo viral do YouTube e gere um plano para criar um vídeo similar, mas original.
     
@@ -38,7 +29,7 @@ export const analyzeVideoIdea = async (video: VideoResult): Promise<IdeaAnalysis
     }
     `;
 
-    try {
+    return await withModelFallback(async (model) => {
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
@@ -47,8 +38,5 @@ export const analyzeVideoIdea = async (video: VideoResult): Promise<IdeaAnalysis
         const jsonString = text.replace(/```json\n?|\n?```/g, "").trim();
 
         return JSON.parse(jsonString) as IdeaAnalysis;
-    } catch (error) {
-        console.error("Erro ao analisar ideia com Gemini:", error);
-        throw new Error("Falha ao analisar a ideia. Tente novamente.");
-    }
+    }, { models: PRIMARY_MODELS });
 };
