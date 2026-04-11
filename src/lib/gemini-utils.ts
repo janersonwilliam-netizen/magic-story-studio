@@ -8,19 +8,17 @@ const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
  * Using stable names as fallbacks for the experimental/custom ones.
  */
 export const PRIMARY_MODELS = [
-    'gemini-2.5-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-002',
     'gemini-2.0-flash',
     'gemini-flash-latest',
-    'gemini-2.0-flash-lite',
-    'gemini-2.0-flash-001',
-    'gemini-3-flash-preview',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest'
+    'gemini-1.5-flash-8b',
+    'gemini-2.0-flash-lite-preview-02-05'
 ];
 
 export const SMART_MODELS = [
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
+    'gemini-1.5-pro',
+    'gemini-1.5-flash',
     'gemini-2.0-flash'
 ];
 
