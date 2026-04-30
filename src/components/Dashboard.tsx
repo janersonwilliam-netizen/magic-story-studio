@@ -95,7 +95,7 @@ export function Dashboard() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {stories.map((story) => {
                         const steps = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
-                        const currentStepIndex = steps.indexOf(story.data.currentStep);
+                        const currentStepIndex = steps.indexOf(story.data?.currentStep || 'CONFIG');
 
                         return (
                             <div
@@ -174,7 +174,7 @@ export function Dashboard() {
 
                                     <div className="flex items-center justify-between pt-2">
                                         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                            {story.data.currentStep}
+                                            {story.data?.currentStep || 'CONFIG'}
                                         </span>
                                         <button
                                             onClick={(e) => handleDelete(e, story.id)}
