@@ -103,7 +103,7 @@ const supabaseStoryStorage = {
     async getAllStories(): Promise<StoryProject[]> {
         const { data, error } = await supabase
             .from('stories')
-            .select('*')
+            .select('id, title, created_at, updated_at, preview_image, is_complete, currentStep:data->>currentStep')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
@@ -114,7 +114,7 @@ const supabaseStoryStorage = {
             createdAt: new Date(record.created_at).getTime(),
             updatedAt: new Date(record.updated_at).getTime(),
             previewImage: record.preview_image,
-            data: record.data, // JSONB is automatically parsed
+            data: { currentStep: record.currentStep } as StudioState,
             isComplete: record.is_complete
         }));
     },
@@ -239,7 +239,7 @@ export const storyStorage = {
 
                 // Create a timeout promise that rejects
                 const timeout = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('Cloud fetch timed out')), 5000)
+                    setTimeout(() => reject(new Error('Cloud fetch timed out')), 15000)
                 );
 
                 // Wait for Cloud or Timeout
@@ -272,7 +272,7 @@ export const storyStorage = {
                 const cloudFetch = supabaseStoryStorage.getStory(id);
 
                 const timeout = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('Cloud fetch timed out')), 5000)
+                    setTimeout(() => reject(new Error('Cloud fetch timed out')), 15000)
                 );
 
                 return await Promise.race([cloudFetch, timeout]);

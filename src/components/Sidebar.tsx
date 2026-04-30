@@ -1,11 +1,11 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video, FolderOpen, Youtube } from 'lucide-react';
+import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video, FolderOpen, Youtube, Flower2, Bot } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
-    currentPage: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'studio' | 'files' | 'ideas';
-    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'studio' | 'files' | 'ideas') => void;
+    currentPage: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen';
+    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen') => void;
     isOpen: boolean;
 }
 
@@ -19,7 +19,10 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
         { id: 'files' as const, label: 'Biblioteca', icon: FolderOpen },
         { id: 'prompt-master' as const, label: 'Prompt Mestre', icon: Sparkles },
         { id: 'image-test' as const, label: 'Teste de Imagens', icon: TestTube },
+        { id: 'pollinations-test' as const, label: 'Teste Pollinations', icon: Flower2 },
+        { id: 'playground' as const, label: 'Playground', icon: Bot },
         { id: 'ideas' as const, label: 'Pesquisa de Ideias', icon: Youtube },
+        { id: 'video-gen' as const, label: 'Geração de Vídeo', icon: Video },
     ];
 
     // Items for the bottom/secondary section
@@ -29,7 +32,7 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
 
     return (
         <motion.aside
-            className="h-full bg-background border-r border-border z-40 flex flex-col overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500"
+            className="h-full bg-[#1a1a1c] border-r border-border z-40 flex flex-col overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500"
             initial={false}
             animate={{ width: isOpen ? '240px' : '72px' }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}

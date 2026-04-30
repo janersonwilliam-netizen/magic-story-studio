@@ -29,19 +29,44 @@ if (!apiKey) {
  * Nano Banana works better with concise, direct English prompts
  * NOW DYNAMIC - extracts character info from the prompt itself
  */
-function translateAndCompactPrompt(prompt: string, styleConfig?: string): string {
-    // If the prompt doesn't follow the internal structure (CENA/EMOÇÃO), it means the user edited it manually
-    // In this case, we use the prompt exactly as is (just truncating for URL safety)
-    if (!prompt.match(/CENA:/i) && !prompt.match(/PERSONAGEM:/i) && !prompt.match(/EMOÇÃO:/i)) {
-        console.log('[Translate] Raw prompt detected, using as-is');
-        // IMPORTANT: Replace newlines and multiple spaces with single space to avoid URL issues
-        return prompt.replace(/\s+/g, ' ').trim().substring(0, 1000);
+async function translateAndCompactPrompt(prompt: string, styleConfig?: string): Promise<string> {
+    // If the prompt is already in English (our new descriptive prompts), skip translation entirely
+    // This preserves Portuguese title text embedded in quotes within English prompts
+    const isAlreadyEnglish = prompt.match(/^(A |An |The |Children|3D |2D |Cute |Scene|Title)/i) 
+        || prompt.match(/Pixar animation style/i)
+        || prompt.match(/children book illustration/i)
+        || prompt.match(/widescreen 16:9/i);
+    
+    if (isAlreadyEnglish) {
+        console.log('[Translate] Prompt already in English, skipping translation');
+        return prompt.replace(/\s+/g, ' ').trim().substring(0, 800);
+    }
+
+    // If the prompt doesn't follow the standard structure, use LLM to translate quickly to English
+    if (!prompt.match(/CENA:/i) && !prompt.match(/PERSONAGEM:/i) && !prompt.match(/EMOÇÃO:/i) && !prompt.match(/CHARACTER DETAILS:/i)) {
+        console.log('[Translate] Raw prompt detected, translating via LLM...');
+        try {
+            const response = await fetch('/api/generate-text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: `Translate this image generation prompt from Portuguese to English. IMPORTANT: Keep any text inside quotes exactly as-is (do not translate quoted title text). Make it concise, descriptive, and maximum 400 characters long. Do not include introductory text, just the translation:\n${prompt}`
+                })
+            });
+            const data = await response.json() as any;
+            if (data.text) {
+                return data.text.trim().substring(0, 800);
+            }
+        } catch (e) {
+            console.error('LLM Translation failed', e);
+        }
+        return prompt.replace(/\s+/g, ' ').trim().substring(0, 800);
     }
 
     // Extract key information using regex
     const sceneMatch = prompt.match(/CENA:([^]*?)(?:EMOÇÃO:|PERSONAGEM:|COMPOSIÇÃO:|IMPORTANTE:|TITULO:|$)/i);
     const emotionMatch = prompt.match(/EMOÇÃO:\s*(\w+)/i);
-    const characterMatch = prompt.match(/PERSONAGEM:([^]*?)(?:CENA:|EMOÇÃO:|COMPOSIÇÃO:|TITULO:|$)/i);
+    const characterMatch = prompt.match(/PERSONAGEM:([^]*?)(?:CENA:|EMOÇÃO:|COMPOSIÇÃO:|TITULO:|$)/i) || prompt.match(/CHARACTER DETAILS:([^]*?)(?:TECHNICAL:|$)/i);
     const titleMatch = prompt.match(/TITULO:([^]*?)(?:CENA:|EMOÇÃO:|PERSONAGEM:|COMPOSIÇÃO:|$)/i);
 
     // Extract character species/type if specified
@@ -112,110 +137,119 @@ function translateAndCompactPrompt(prompt: string, styleConfig?: string): string
         speciesEN = speciesEN.replace(new RegExp(pt, 'gi'), en);
     }
 
-    // Build simplified English prompt - DYNAMIC, not hardcoded
+    // Build simplified English prompt - natural descriptive style (works best with Gemini 2.5 Flash)
     let optimized = '';
 
-    // 1. TEXT/TITLE (Highest Priority for visibility)
+    // 1. TEXT/TITLE for thumbnails
     if (titleText) {
-        optimized += `TEXT RENDER: The text "${titleText}" written in BIG 3D CARTOON MOVIES STYLE LETTERS in the center. Typography must be clearly visible and legible. `;
+        optimized += `Title text "${titleText.substring(0, 50)}" in thick chunky 3D extruded letters at top, each word different vibrant color, thematic textures, drop shadows, glossy shine. `;
     }
 
-    // 2. SCENE ACTION (Priority for variety)
-    // Put scene BEFORE character details to ensure the specific action isn't lost
-    // Scene description (translated and simplified)
+    // 2. SCENE ACTION
     if (scene) {
         let sceneEN = scene;
-        // Apply common translations
         for (const [pt, en] of Object.entries(ptToEnTranslations)) {
             sceneEN = sceneEN.replace(new RegExp(pt, 'gi'), en);
         }
-        // Scene-specific translations
-        sceneEN = sceneEN
-            .replace(/Ampla tomada aérea mostrando/gi, 'Wide shot:')
-            .replace(/um vale florido/gi, 'flowery valley')
-            .replace(/montanhas suaves ao fundo/gi, 'soft mountains')
-            .replace(/céu azul brilhante/gi, 'bright blue sky')
-            .replace(/Transição para um plano médio/gi, 'Medium shot:')
-            .replace(/fazenda vibrante/gi, 'vibrant farm')
-            .replace(/celeiro vermelho e cerca branca/gi, 'red barn, white fence')
-            .replace(/celeiro/gi, 'barn')
-            .replace(/floresta/gi, 'forest')
-            .replace(/oceano/gi, 'ocean')
-            .replace(/praia/gi, 'beach')
-            .replace(/montanha/gi, 'mountain')
-            .replace(/jardim/gi, 'garden')
-            .replace(/casa/gi, 'house')
-            .replace(/escola/gi, 'school')
-            .replace(/parque/gi, 'park')
-            .replace(/rio/gi, 'river')
-            .replace(/lago/gi, 'lake')
-            .replace(/céu/gi, 'sky')
-            .replace(/sol/gi, 'sun')
-            .replace(/lua/gi, 'moon')
-            .replace(/estrelas/gi, 'stars')
-            .replace(/noite/gi, 'night')
-            .replace(/dia/gi, 'day')
-            .replace(/manhã/gi, 'morning')
-            .replace(/tarde/gi, 'afternoon')
-            .replace(/câmera/gi, 'camera');
-
-        optimized += `SCENE ACTION: ${sceneEN.substring(0, 800)}. `;
+        optimized += `${sceneEN.substring(0, 150)}, `;
     }
 
-    // 3. CHARACTER DETAILS (After scene to contextualize)
-    // Character description (if available)
+    // 3. CHARACTER DETAILS
     if (character) {
         let charEN = character;
-        // Apply translations
+        
+        // LLM translation for complex descriptions
+        if (charEN.length > 50) {
+            try {
+                const response = await fetch('/api/generate-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: `Translate this character visual description to English for an image generation prompt. Output ONLY the English translation, maximum 120 characters, no intro text, no quotes:\n${charEN}`
+                    })
+                });
+                const data = await response.json() as any;
+                if (data.text && data.text.length > 10) {
+                    charEN = data.text.trim()
+                        .replace(/^["']|["']$/g, '')
+                        .replace(/Pixar/gi, '')
+                        .replace(/Disney/gi, '')
+                        .replace(/DreamWorks/gi, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    console.log('[Translate] LLM character translation:', charEN);
+                }
+            } catch (e) {
+                console.warn('[Translate] LLM translation failed, using regex fallback');
+            }
+        }
+
+        // Regex fallback translations
         for (const [pt, en] of Object.entries(ptToEnTranslations)) {
             charEN = charEN.replace(new RegExp(pt, 'gi'), en);
         }
-        // Additional translations
         charEN = charEN
             .replace(/olhos grandes/gi, 'big eyes')
             .replace(/olhos curiosos/gi, 'curious eyes')
             .replace(/olhos expressivos/gi, 'expressive eyes')
-            .replace(/manchas marrons/gi, 'brown spots')
-            .replace(/charmosas/gi, 'charming')
-            .replace(/pequeno/gi, 'small')
-            .replace(/grande/gi, 'large')
+            .replace(/olhos castanhos/gi, 'brown eyes')
+            .replace(/olhos azuis/gi, 'blue eyes')
+            .replace(/olhos verdes/gi, 'green eyes')
+            .replace(/olhos/gi, 'eyes')
+            .replace(/cabelo loiro/gi, 'blonde hair')
+            .replace(/cabelo castanho/gi, 'brown hair')
+            .replace(/cabelo preto/gi, 'black hair')
+            .replace(/cabelo ruivo/gi, 'red hair')
+            .replace(/cabelo/gi, 'hair')
+            .replace(/rosto redondo/gi, 'round face')
+            .replace(/rosto/gi, 'face')
+            .replace(/pele clara/gi, 'light skin')
+            .replace(/pele morena/gi, 'tan skin')
+            .replace(/pele escura/gi, 'dark skin')
+            .replace(/pele/gi, 'skin')
+            .replace(/aproximadamente/gi, 'approximately')
+            .replace(/anos de idade/gi, 'years old')
+            .replace(/alegre/gi, 'cheerful')
+            .replace(/enérgico/gi, 'energetic')
+            .replace(/amigável/gi, 'friendly')
+            .replace(/curioso/gi, 'curious')
+            .replace(/corajoso/gi, 'brave')
+            .replace(/tímido/gi, 'shy')
             .replace(/fofo/gi, 'cute')
             .replace(/peludo/gi, 'furry')
             .replace(/colorido/gi, 'colorful')
             .replace(/brilhante/gi, 'bright')
-            .replace(/dourado/gi, 'golden')
-            .replace(/prateado/gi, 'silver')
-            .replace(/azul/gi, 'blue')
-            .replace(/vermelho/gi, 'red')
-            .replace(/verde/gi, 'green')
-            .replace(/amarelo/gi, 'yellow')
-            .replace(/vermelho/gi, 'red')
-            .replace(/verde/gi, 'green')
-            .replace(/amarelo/gi, 'yellow');
+            .replace(/grande/gi, 'big')
+            .replace(/pequeno/gi, 'small')
+            .replace(/com um/gi, 'with a')
+            .replace(/com uma/gi, 'with a')
+            .replace(/de aproximadamente/gi, 'approximately')
+            .replace(/sete a oito/gi, 'seven to eight')
+            .replace(/e olhos/gi, 'and eyes')
+            .replace(/Um /gi, 'A ')
+            .replace(/Uma /gi, 'A ');
 
-        optimized += `CHARACTERS: ${charEN.substring(0, 800)}. `;
+        optimized += `${charEN.substring(0, 180)}, `;
     }
 
-    // Quality constraints
-    optimized += 'NO deformities, NO extra limbs, correct anatomy. ';
+    // 4. Emotion
+    if (emotionEN) {
+        optimized += `${emotionEN} mood, `;
+    }
 
-    // Emotion
-    optimized += `Emotion: ${emotionEN}. `;
-
-    // Style (concise)
+    // 5. Style suffix (simple descriptive, like the successful lion test)
     if (styleConfig === 'Estilo 2D Cartoon') {
-        optimized += 'Premium 2D cartoon illustration, modern mobile game art style, vibrant colors, soft colorful shading, crisp clean outlines, magical storybook atmosphere, detailed background with glowing highlights, cute friendly design, NO 3D render, NO CGI, aspect ratio 16:9 wide shot. ';
+        optimized += '2D cartoon illustration style, modern children storybook art, vibrant colors, cute, adorable, crisp clean lines, well-proportioned anatomy, correct number of limbs, children book illustration, widescreen 16:9';
     } else {
-        // Default to Pixar
-        optimized += '3D Pixar style, cinematic lighting, vibrant colors, high quality render, no watermarks, no logos, aspect ratio 16:9 wide shot. ';
+        optimized += '3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs, children book illustration, widescreen 16:9';
     }
 
     // Final cleanup
-    optimized = optimized.replace(/\s+/g, ' ').trim();
-
-    // Limit to 400 characters for best results
-    if (optimized.length > 400) {
-        optimized = optimized.substring(0, 347) + '...';
+    optimized = optimized.replace(/,\s*,/g, ',').replace(/\s+/g, ' ').trim();
+    
+    // Gemini 2.5 Flash Image supports longer prompts
+    if (optimized.length > 800) {
+        optimized = optimized.substring(0, 800);
     }
 
     console.log('[Translate] Species detected:', speciesEN || 'not specified');
@@ -229,92 +263,49 @@ function translateAndCompactPrompt(prompt: string, styleConfig?: string): string
  * Returns a data URL of the generated image
  */
 export async function generateImageWithNanoBanana(prompt: string, styleConfig?: string): Promise<string> {
-    if (!apiKey) {
-        throw new Error('API Key do Google não configurada. Configure VITE_GEMINI_API_KEY no arquivo .env');
-    }
+    const optimizedPrompt = await translateAndCompactPrompt(prompt, styleConfig);
+    console.log('[Vertex Image] Optimized prompt:', optimizedPrompt);
 
-    // Translate and compact prompt for better results
-    const optimizedPrompt = translateAndCompactPrompt(prompt, styleConfig);
-
-    console.log('[Gemini Image] Optimized prompt:', optimizedPrompt);
-
-    const genAI = new GoogleGenAI({ apiKey });
-
-    // VERIFIED model names from ListModels API (queried 2026-04-10)
-    // These are the ONLY models that support responseModalities: ['IMAGE']
-    const imageModels = [
-        'gemini-2.5-flash-image',           // "Nano Banana" - primary
-        'gemini-3.1-flash-image-preview',    // "Nano Banana 2" - backup
-        'gemini-3-pro-image-preview',        // "Nano Banana Pro" - backup 2
-    ];
-
-    let lastError: any = null;
-
-    for (const model of imageModels) {
+    const maxRetries = 5;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`[Gemini Image] Trying model: ${model}...`);
-
-            const result = await genAI.models.generateContent({
-                model,
-                config: {
-                    responseModalities: ['IMAGE'],
-                },
-                contents: [{
-                    role: 'user',
-                    parts: [{ text: optimizedPrompt }]
-                }]
+            const response = await fetch('/api/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: optimizedPrompt, aspectRatio: '16:9' }),
             });
 
-            // Extract image from response
-            if (result.candidates && result.candidates.length > 0) {
-                const candidate = result.candidates[0];
-
-                // Check for safety blocks
-                if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION') {
-                    console.warn(`[Gemini Image] Blocked by ${model}: ${candidate.finishReason}`);
-                    lastError = new Error(`Imagem bloqueada. Motivo: ${candidate.finishReason}`);
-                    continue; // Try next model
-                }
-
-                if (candidate.content && candidate.content.parts) {
-                    for (const part of candidate.content.parts) {
-                        if (part.inlineData && part.inlineData.data) {
-                            const mimeType = part.inlineData.mimeType || 'image/png';
-                            const dataUrl = `data:${mimeType};base64,${part.inlineData.data}`;
-                            console.log(`[Gemini Image] ✅ Success with model: ${model}`);
-                            return dataUrl;
-                        }
-                        if (part.fileData && part.fileData.fileUri) {
-                            console.log(`[Gemini Image] ✅ Success (file URI) with model: ${model}`);
-                            return part.fileData.fileUri;
-                        }
-                    }
-                }
-            }
-
-            console.warn(`[Gemini Image] No image data from ${model}, trying next...`);
-            lastError = new Error(`Modelo ${model} não retornou imagem`);
-
-        } catch (err: any) {
-            console.warn(`[Gemini Image] Model ${model} failed:`, err.message);
-            lastError = err;
-
-            // On quota errors (429), wait 5s before trying next model
-            if (err.message?.includes('429') || err.message?.includes('quota')) {
-                console.log('[Gemini Image] Quota hit, waiting 5s...');
-                await new Promise(r => setTimeout(r, 5000));
-            }
-            // On 404, skip immediately to next model
-            if (err.message?.includes('404') || err.message?.includes('not found')) {
+            // Handle rate limiting with retry
+            if (response.status === 429 && attempt < maxRetries) {
+                const waitTime = (attempt + 1) * 8000 + Math.random() * 5000; // 8-13s, 16-21s, 24-29s...
+                console.warn(`[Vertex Image] Rate limited (429), retrying in ${Math.round(waitTime / 1000)}s... (attempt ${attempt + 1}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, waitTime));
                 continue;
             }
-            // On other errors, also try next model
-            continue;
+
+            const textResponse = await response.text();
+            let data;
+            try {
+                data = JSON.parse(textResponse);
+            } catch (e) {
+                console.error('[Vertex Image] Failed to parse JSON. Status:', response.status, 'Body:', textResponse);
+                throw new Error(`Invalid JSON response from server (Status ${response.status}): ${textResponse.substring(0, 100)}`);
+            }
+            if (!response.ok) throw new Error(data.error || `Erro HTTP ${response.status}`);
+            if (data.base64) return `data:${data.mimeType || 'image/png'};base64,${data.base64}`;
+            throw new Error('Nenhuma imagem retornada pelo backend');
+        } catch (err: any) {
+            if (attempt < maxRetries && (err.message?.includes('429') || err.message?.includes('Resource exhausted'))) {
+                const waitTime = (attempt + 1) * 5000 + Math.random() * 3000;
+                console.warn(`[Vertex Image] Error, retrying in ${Math.round(waitTime / 1000)}s...`, err.message);
+                await new Promise(r => setTimeout(r, waitTime));
+                continue;
+            }
+            console.error(`[Vertex Image] Falha na geração:`, err);
+            throw new Error(`Falha na geração de imagem: ${err.message}`);
         }
     }
-
-    // All models failed
-    throw new Error(`Erro ao gerar imagem com Gemini após tentativas: ${lastError?.message || 'Todos os modelos falharam'}`);
+    throw new Error('Falha na geração após múltiplas tentativas');
 }
 
 /**
@@ -331,188 +322,56 @@ export async function generateImageWithReferences(
     characterStatuses?: string[],
     styleConfig?: string
 ): Promise<string> {
-    if (!apiKey) {
-        throw new Error('API Key do Google não configurada. Configure VITE_GEMINI_API_KEY no arquivo .env');
-    }
-
     if (referenceImages.length === 0) {
-        console.warn('[Gemini 3 Pro Image] No reference images provided, falling back to standard generation');
         return generateImageWithNanoBanana(prompt, styleConfig);
     }
-
-    if (referenceImages.length > 5) {
-        console.warn('[Gemini 3 Pro Image] Too many reference images (max 5 for characters), using first 5');
-        referenceImages = referenceImages.slice(0, 5);
-    }
-
-    // Translate and compact prompt
-    const optimizedPrompt = translateAndCompactPrompt(prompt, styleConfig);
-
-    // Add EXPLICIT consistency AND child-friendly instructions
-    const enhancedPrompt = `SCENE ACTION (PRIORITY 1): ${optimizedPrompt}
-
-CRITICAL STYLE REQUIREMENTS (High Priority):
-1. CHILD-FRIENDLY: Cute, adorable, BIG expressive eyes (Pixar/DreamWorks style), soft rounded features, friendly appearance
-2. EXACT CONSISTENCY: Use IDENTICAL colors, proportions, and features from the provided reference images
-3. NO realistic/adult features - must be cartoon-style, appealing to children ages 3-8
-4. Maintain playful, innocent, non-threatening character design`;
-
-    console.log('[Gemini 3 Pro Image] Generating with', referenceImages.length, 'reference images');
-    console.log('[Gemini 3 Pro Image] Enhanced prompt:', enhancedPrompt);
+    
+    const optimizedPrompt = await translateAndCompactPrompt(prompt, styleConfig);
+    const enhancedPrompt = `${optimizedPrompt}, matching the reference images exactly, same character colors and features`;
 
     const maxRetries = 5;
-    let attempt = 0;
-
-    while (attempt < maxRetries) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const genAI = new GoogleGenAI({ apiKey });
-            // ... (rest of the logic)
-
-
-
-            // Build contents array: prompt + reference images
-            const contents: any[] = [
-                { text: enhancedPrompt }
-            ];
-
-            // Add reference images with CONDITIONAL duplication
-            // Protagonists: 1x (already have good consistency)
-            // Supporting: 2x (need extra emphasis)
-            for (let i = 0; i < referenceImages.length; i++) {
-                const refImage = referenceImages[i];
-                const status = characterStatuses?.[i] || 'supporting'; // Default to supporting for safety
-
-                // Extract base64 data from data URL
-                const base64Match = refImage.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/);
-
-                if (base64Match) {
-                    const mimeType = `image/${base64Match[1]}`;
-                    const base64Data = base64Match[2];
-
-                    const imageData = {
-                        inlineData: {
-                            mimeType,
-                            data: base64Data
-                        }
-                    };
-
-                    // Conditional duplication based on character importance
-                    if (status === 'protagonist') {
-                        // Protagonist: Add once (already consistent)
-                        contents.push(imageData);
-                        console.log('[Gemini 3 Pro Image] Added PROTAGONIST reference (1x weight)');
-                    } else {
-                        // Supporting: Add twice (needs more emphasis)
-                        contents.push(imageData);
-                        contents.push(imageData);
-                        console.log('[Gemini 3 Pro Image] Added SUPPORTING reference (2x weight)');
-                    }
-                } else {
-                    console.warn('[Gemini 3 Pro Image] Invalid reference image format, skipping');
-                }
-            }
-
-            console.log(`[Gemini 3 Pro Image] Attempt ${attempt + 1}/${maxRetries}. Total content items:`, contents.length);
-
-            // Use Gemini 3 Pro Image Preview model
-            const model = 'gemini-3-pro-image-preview';
-
-            const result = await genAI.models.generateContent({
-                model,
-                contents: contents,
-                config: {
-                    responseModalities: ['IMAGE'],
-                    imageConfig: {
-                        aspectRatio: '16:9'
-                    }
-                }
+            const response = await fetch('/api/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: enhancedPrompt,
+                    aspectRatio: '16:9',
+                    referenceImages: referenceImages.slice(0, 5)
+                }),
             });
 
-            console.log('[Gemini 3 Pro Image] Generation complete');
-
-            // Extract image from response
-            if (result.candidates && result.candidates.length > 0) {
-                const candidate = result.candidates[0];
-
-                // Check finish reason
-                if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION' || candidate.finishReason === 'OTHER') {
-                    console.error(`[Gemini 3 Pro Image] Generation blocked. Reason: ${candidate.finishReason}`, candidate.safetyRatings);
-                    throw new Error(`Imagem de referência bloqueada. Motivo: ${candidate.finishReason}. Tente outro prompt.`);
-                }
-
-                if (candidate.content && candidate.content.parts) {
-                    for (const part of candidate.content.parts) {
-                        if (part.inlineData && part.inlineData.data) {
-                            const mimeType = part.inlineData.mimeType || 'image/png';
-                            const base64Data = part.inlineData.data;
-                            const dataUrl = `data:${mimeType};base64,${base64Data}`;
-
-                            console.log('[Gemini 3 Pro Image] Image generated with ENHANCED child-friendly consistency');
-                            return dataUrl;
-                        }
-
-                        if (part.fileData && part.fileData.fileUri) {
-                            console.log('[Gemini 3 Pro Image] Image generated with file URI:', part.fileData.fileUri);
-                            return part.fileData.fileUri;
-                        }
-                    }
-                }
+            // Handle rate limiting with retry
+            if (response.status === 429 && attempt < maxRetries) {
+                const waitTime = (attempt + 1) * 8000 + Math.random() * 5000;
+                console.warn(`[Vertex Image] Rate limited (429) with refs, retrying in ${Math.round(waitTime / 1000)}s... (attempt ${attempt + 1}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                continue;
             }
 
-            console.error('[Gemini 3 Pro Image] No image data found in response', result);
-            const feedback = (result as any).promptFeedback;
-            if (feedback) {
-                console.error('[Gemini 3 Pro Image] Prompt Feedback:', feedback);
-                if (feedback.blockReason) {
-                    throw new Error(`Geração bloqueada. Motivo: ${feedback.blockReason}`);
-                }
-            }
-
-            throw new Error('Gemini 3 Pro Image não retornou uma imagem. Verifique se sua API Key tem permissão para o modelo e se não há restrições de segurança.');
-
-        } catch (error: any) {
-            console.error(`[Gemini 3 Pro Image] Error (Attempt ${attempt + 1}):`, error);
-
-            // Don't wrap if it's already an Error object we created, but ALLOW fallback to proceed
-            // We removed the 'throw error' here to allow the code to reach the fallback block below
-            if (error.message && (error.message.includes('bloqueada') || error.message.includes('API Key'))) {
-                console.warn('[Gemini 3 Pro Image] Blocked or API Error. Proceeding to fallback.');
-            }
-
-            // Handle 503 Overloaded error - check multiple patterns
-            const errorStr = JSON.stringify(error) || error.message || '';
-            const is503 =
-                errorStr.includes('503') ||
-                errorStr.includes('overloaded') ||
-                errorStr.includes('UNAVAILABLE') ||
-                errorStr.includes('try again later') ||
-                error.code === 503 ||
-                error.status === 'UNAVAILABLE';
-
-            if (is503) {
-                attempt++;
-                if (attempt < maxRetries) {
-                    const delay = 3000 * Math.pow(1.5, attempt); // Exponential backoff: 4.5s, 6.7s, 10s, 15s
-                    console.log(`[Gemini 3 Pro Image] Model overloaded (503). Retrying in ${Math.round(delay / 1000)}s... (Attempt ${attempt + 1}/${maxRetries})`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    continue; // Retry loop
-                }
-            }
-
-            // Fallback to Nano Banana (Gemini 2.5) if Gemini 3 Pro fails after retries or other errors
-            console.warn('[Gemini 3 Pro Image] Failed. Falling back to Gemini 2.5 Flash Image (Nano Banana).');
+            const textResponse = await response.text();
+            let data;
             try {
-                // Use the original prompt for fallback, losing reference consistency but getting an image
-                return await generateImageWithNanoBanana(prompt, styleConfig);
-            } catch (fallbackError: any) {
-                console.error('[Gemini 3 Pro Image] Fallback failed:', fallbackError);
-                throw new Error(`Falha na geração com referências e fallback: ${error.message}.`);
+                data = JSON.parse(textResponse);
+            } catch (e) {
+                console.error('[Vertex Image] Failed to parse JSON with refs. Status:', response.status, 'Body:', textResponse);
+                throw new Error(`Invalid JSON response from server (Status ${response.status}): ${textResponse.substring(0, 100)}`);
             }
+            if (!response.ok) throw new Error(data.error || `Erro HTTP ${response.status}`);
+            if (data.base64) return `data:${data.mimeType || 'image/png'};base64,${data.base64}`;
+            throw new Error('Nenhuma imagem retornada');
+        } catch (err: any) {
+            if (attempt < maxRetries && (err.message?.includes('429') || err.message?.includes('Resource exhausted'))) {
+                const waitTime = (attempt + 1) * 8000 + Math.random() * 5000;
+                console.warn(`[Vertex Image] Error with refs, retrying in ${Math.round(waitTime / 1000)}s...`, err.message);
+                await new Promise(r => setTimeout(r, waitTime));
+                continue;
+            }
+            console.warn(`[Vertex Image] Falha com refs, fallback para padrão:`, err.message);
+            return generateImageWithNanoBanana(prompt, styleConfig);
         }
     }
-
-    // This part essentially becomes unreachable due to the fallback in the loop's catch, 
-    // but kept for safety if loop breaks unexpectedly
-    console.warn('[Gemini 3 Pro Image] Loop finished without result. Falling back.');
+    // Final fallback
     return generateImageWithNanoBanana(prompt, styleConfig);
 }

@@ -11,7 +11,10 @@ import { MainLayout } from './components/MainLayout';
 import { SettingsPage } from './components/SettingsPage';
 import { PromptMasterPage } from './components/PromptMasterPage';
 import ImageTestPage from './components/ImageTestPage';
+import PollinationsTestPage from './components/PollinationsTestPage';
 import { IdeaResearchPage } from './components/IdeaResearchPage';
+import { PlaygroundPage } from './components/PlaygroundPage';
+import { VideoGenPage } from './components/VideoGenPage';
 
 export default function App() {
     return (
@@ -36,11 +39,14 @@ export default function App() {
                         <Route path="/settings" element={<SettingsPage />} />
                         <Route path="/prompt-master" element={<PromptMasterPage />} />
                         <Route path="/image-test" element={<ImageTestPage />} />
+                        <Route path="/pollinations-test" element={<PollinationsTestPage />} />
                         <Route path="/ideas" element={<IdeaResearchPage />} />
+                        <Route path="/playground" element={<PlaygroundPage />} />
+                        <Route path="/video-gen" element={<VideoGenPage />} />
                     </Route>
 
                     {/* Default redirect */}
-                    <Route path="/" element={<Navigate to="/login" replace />} />
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
             </Router>
         </AuthProvider>

@@ -1,14 +1,9 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { withModelFallback, PRIMARY_MODELS, SMART_MODELS } from '../lib/gemini-utils';
+/**
+ * gemini.ts — Serviço de geração de texto via Vertex AI
+ * TODAS as chamadas passam pelo backend /api/generate-text (100% Vertex AI)
+ */
+
 import { DEFAULT_INSTRUCTIONS_CLASSICA, DEFAULT_INSTRUCTIONS_BIBLICA } from '../lib/promptDefaults';
-
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-if (!apiKey) {
-    console.warn('Gemini API key not configured. Story generation will not work.');
-}
-
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 export interface GenerateStoryParams {
     title: string;
@@ -25,166 +20,152 @@ export interface GenerateStoryResponse {
     narration_text: string;
 }
 
+// ── Helper central: chama o backend Vertex AI ──────────────────────────────
+async function callVertexText(
+    prompt: string,
+    options: { temperature?: number; maxOutputTokens?: number; jsonMode?: boolean } = {}
+): Promise<string> {
+    let data;
+    try {
+        const response = await fetch('/api/generate-text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt,
+                temperature: options.temperature ?? 0.7,
+                maxOutputTokens: options.maxOutputTokens ?? 8192,
+                jsonMode: options.jsonMode ?? false,
+            }),
+        });
+
+        data = await response.json() as any;
+        if (!response.ok || data.error) {
+            throw new Error(data.error || `Erro HTTP ${response.status}`);
+        }
+    } catch (e: any) {
+        throw new Error(`Erro ao comunicar com o servidor: ${e.message}`);
+    }
+    return data.text as string;
+}
+
+// ── Geração da História ────────────────────────────────────────────────────
 export async function generateStoryWithGemini(
     params: GenerateStoryParams
 ): Promise<GenerateStoryResponse> {
-    
-    // System instructions (embedded in the prompt for Gemini)
-    let systemInstructions = params.customSystemInstructions;
 
+    let systemInstructions = params.customSystemInstructions;
     if (!systemInstructions) {
-        if (params.theme === 'biblica') {
-            systemInstructions = DEFAULT_INSTRUCTIONS_BIBLICA;
-        } else {
-            systemInstructions = DEFAULT_INSTRUCTIONS_CLASSICA;
-        }
+        systemInstructions = params.theme === 'biblica'
+            ? DEFAULT_INSTRUCTIONS_BIBLICA
+            : DEFAULT_INSTRUCTIONS_CLASSICA;
     }
 
-    // Build age-specific requirements
     let ageRequirements = '';
     if (params.age_group === '3-5') {
-        ageRequirements = `- Vocabulário muito simples
-- Frases curtas (máximo 10 palavras)
-- Repetições e padrões
-- Personagens animais ou objetos falantes
-- Cores vibrantes e elementos visuais simples
-- Mensagem muito clara e direta`;
+        ageRequirements = `- Vocabulário muito simples\n- Frases curtas (máximo 10 palavras)\n- Repetições e padrões\n- Personagens animais ou objetos falantes\n- Cores vibrantes e elementos visuais simples\n- Mensagem muito clara e direta`;
     } else if (params.age_group === '6-8') {
-        ageRequirements = `- Vocabulário intermediário
-- Frases de 10-15 palavras
-- Pequenos diálogos
-- Personagens mais complexos
-- Pequenos desafios ou mistérios
-- Mensagem sobre amizade, coragem ou descoberta`;
+        ageRequirements = `- Vocabulário intermediário\n- Frases de 10-15 palavras\n- Pequenos diálogos\n- Personagens mais complexos\n- Pequenos desafios ou mistérios\n- Mensagem sobre amizade, coragem ou descoberta`;
     } else if (params.age_group === '9-12') {
-        ageRequirements = `- Vocabulário mais rico
-- Frases de 15-20 palavras
-- Diálogos elaborados
-- Personagens com personalidade desenvolvida
-- Aventuras mais complexas
-- Mensagens sobre valores e crescimento pessoal`;
+        ageRequirements = `- Vocabulário mais rico\n- Frases de 15-20 palavras\n- Diálogos elaborados\n- Personagens com personalidade desenvolvida\n- Aventuras mais complexas\n- Mensagens sobre valores e crescimento pessoal`;
     }
 
-    // Build tone-specific requirements
     let toneRequirements = '';
     if (params.tone === 'calma') {
-        toneRequirements = `- Atmosfera tranquila e reconfortante
-- Ritmo suave e pausado
-- Cenários acolhedores (floresta, jardim, quarto)
-- Ideal para histórias antes de dormir
-- Resolução pacífica e harmoniosa`;
+        toneRequirements = `- Atmosfera tranquila e reconfortante\n- Ritmo suave e pausado\n- Cenários acolhedores (floresta, jardim, quarto)\n- Ideal para histórias antes de dormir\n- Resolução pacífica e harmoniosa`;
     } else if (params.tone === 'aventura') {
-        toneRequirements = `- Atmosfera emocionante e dinâmica
-- Ritmo acelerado com momentos de tensão
-- Cenários variados e estimulantes
-- Desafios e descobertas
-- Resolução heroica e satisfatória`;
+        toneRequirements = `- Atmosfera emocionante e dinâmica\n- Ritmo acelerado com momentos de tensão\n- Cenários variados e estimulantes\n- Desafios e descobertas\n- Resolução heroica e satisfatória`;
     } else if (params.tone === 'educativa') {
-        toneRequirements = `- Atmosfera curiosa e investigativa
-- Ritmo equilibrado
-- Elementos de aprendizado natural
-- Fatos interessantes integrados à narrativa
-- Resolução que reforça o aprendizado`;
+        toneRequirements = `- Atmosfera curiosa e investigativa\n- Ritmo equilibrado\n- Elementos de aprendizado natural\n- Fatos interessantes integrados à narrativa\n- Resolução que reforça o aprendizado`;
     }
 
-    const minWords = params.duration * 150;
-    const maxWords = params.duration * 200;
+    const minWords = Math.round(params.duration * 115);
+    const maxWords = Math.round(params.duration * 135);
 
-    // Add Story Idea if provided
     let ideaPrompt = '';
-    if (params.storyIdea && params.storyIdea.trim()) {
+    if (params.storyIdea?.trim()) {
         ideaPrompt = `\nIDEIA/ENREDO DO USUÁRIO (Obrigatório seguir): "${params.storyIdea.trim()}"\n`;
     }
 
-    // Force biblical context to avoid tone overrides
     if (params.theme === 'biblica') {
         systemInstructions += `\n\n[DIRETRIZ OBRIGATÓRIA: O usuário exigiu que esta história seja estritamente BÍBLICA. Você DEVE incluir elementos cristãos, valores ensinados por Deus, princípios bíblicos claros e uma moral cristã no final. Não crie uma história secular, mesmo que o tom seja de aventura.]\n`;
     }
 
-    const prompt = `${systemInstructions}
+    const payload = JSON.stringify({
+        title: params.title,
+        theme: params.theme,
+        duration: params.duration,
+        minWords,
+        maxWords,
+        scenes: 8,
+        style: 'Cartoon',
+        idea: ideaPrompt,
+        systemInstructions,
+        ageRequirements,
+        toneRequirements
+    });
 
-Crie uma história infantil com as seguintes características:
+    const response = await fetch('/api/generate-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+    });
 
-TÍTULO: ${params.title}
-FAIXA ETÁRIA: ${params.age_group} anos
-TEMA: ${params.theme}
-TOM: ${params.tone}
-DURAÇÃO DE LEITURA: aproximadamente ${params.duration} minutos
-${ideaPrompt}
-REQUISITOS ESPECÍFICOS POR FAIXA ETÁRIA:
-${ageRequirements}
-
-REQUISITOS ESPECÍFICOS POR TOM:
-${toneRequirements}
-
-FORMATO DE SAÍDA:
-Escreva a história completa em um único texto corrido, sem divisões ou marcações especiais. A história deve ter entre ${minWords} e ${maxWords} palavras.
-
-Lembre-se: esta história será narrada em vídeo para YouTube, então use descrições visuais ricas e crie momentos que serão visualmente interessantes.
-
-IMPORTANTE: Retorne APENAS o texto da história, sem nenhum texto adicional, explicação ou formatação markdown.`;
-
-    // Use fallback utility
-    return await withModelFallback(async (model) => {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const story_text = response.text().trim();
-
-        return {
-            story_text,
-            narration_text: story_text,
-        };
-    }, { models: PRIMARY_MODELS });
-}
-
-/**
- * Translates a text to a target language using Gemini
- */
-export async function translateTitle(title: string, targetLanguage: string): Promise<string> {
-    return await withModelFallback(async (model) => {
-        const prompt = `Translate the following book title to ${targetLanguage}.
-    Title: "${title}"
-    
-    IMPORTANT: Return ONLY the translated title, nothing else. No explanation, no quotes.`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text().trim().replace(/^"|"$/g, '');
-    }, { models: PRIMARY_MODELS });
-}
-
-export async function extractCharactersFromStory(storyText: string): Promise<Record<string, string>> {
-    return await withModelFallback(async (model) => {
-        const prompt = `Analise a seguinte história infantil e identifique os personagens principais.
-    Para cada personagem, forneça uma descrição visual DETALHADA baseada no texto ou inferindo características apropriadas para a história (ex: tipo de animal, cor, roupas, acessórios).
-    Foque APENAS nas características físicas visuais.
-
-    HISTÓRIA:
-    ${storyText}
-
-    FORMATO DE SAÍDA (JSON Puro):
-    {
-        "Nome do Personagem": "Descrição visual física detalhada...",
-        "Outro Personagem": "Descrição visual física detalhada..."
+    let data: any;
+    try {
+        data = await response.json();
+    } catch (e) {
+        if (!response.ok) {
+            throw new Error(`Erro de comunicação com o servidor (${response.status}). Certifique-se de estar rodando 'npm run dev:full' e não apenas 'npm run dev'.`);
+        }
+        throw new Error('O servidor retornou uma resposta inválida (não-JSON).');
     }
 
-    Retorne APENAS o JSON válido, sem markdown ou explicações.`;
+    if (!response.ok || data.error) throw new Error(data.error || 'Erro na API');
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text().trim();
+    let text = '';
+    if (data.titulo && data.cenas) {
+        text = data.cenas.map((c: any) => c.texto).join('\\n\\n');
+    }
 
-        // Remove markdown formatting if present
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
-        return JSON.parse(text);
-    }, { models: PRIMARY_MODELS });
+    return {
+        story_text: text || JSON.stringify(data),
+        narration_text: text || JSON.stringify(data),
+    };
 }
 
-/**
- * Extract structured character data (species, colors, clothing, accessories)
- * Returns detailed character information ready for DNA display and image generation
- */
+// ── Tradução de Título ─────────────────────────────────────────────────────
+export async function translateTitle(title: string, targetLanguage: string): Promise<string> {
+    const prompt = `Translate the following book title to ${targetLanguage}.
+Title: "${title}"
+
+IMPORTANT: Return ONLY the translated title, nothing else. No explanation, no quotes.`;
+    const text = await callVertexText(prompt, { temperature: 0.3 });
+    return text.trim().replace(/^"|"$/g, '');
+}
+
+// ── Extração de Personagens ────────────────────────────────────────────────
+export async function extractCharactersFromStory(storyText: string): Promise<Record<string, string>> {
+    const prompt = `Analise a seguinte história infantil e identifique os personagens principais.
+Para cada personagem, forneça uma descrição visual DETALHADA baseada no texto ou inferindo características apropriadas para a história (ex: tipo de animal, cor, roupas, acessórios).
+Foque APENAS nas características físicas visuais.
+
+HISTÓRIA:
+${storyText}
+
+FORMATO DE SAÍDA (JSON Puro):
+{
+    "Nome do Personagem": "Descrição visual física detalhada...",
+    "Outro Personagem": "Descrição visual física detalhada..."
+}
+
+Retorne APENAS o JSON válido, sem markdown ou explicações.`;
+
+    const text = await callVertexText(prompt, { jsonMode: true });
+    const cleaned = text.trim().replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+}
+
+// ── Dados Estruturados de Personagem ──────────────────────────────────────
 export interface StructuredCharacterData {
     species: string;
     main_colors: string[];
@@ -198,8 +179,7 @@ export async function extractStructuredCharacterData(
     characterName: string,
     visualStyle: string = 'Estilo Pixar 3D'
 ): Promise<StructuredCharacterData> {
-    return await withModelFallback(async (model) => {
-        const prompt = `Analise a história abaixo e extraia informações ESTRUTURADAS sobre o personagem "${characterName}".
+    const prompt = `Analise a história abaixo e extraia informações ESTRUTURADAS sobre o personagem "${characterName}".
 
 HISTÓRIA:
 ${storyText}
@@ -224,19 +204,12 @@ IMPORTANTE:
 
 Retorne APENAS o JSON válido, sem markdown ou explicações.`;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text().trim();
-
-        // Remove markdown formatting
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
-        const data = JSON.parse(text);
-
-        return data;
-    }, { models: PRIMARY_MODELS });
+    const text = await callVertexText(prompt, { jsonMode: true });
+    const cleaned = text.trim().replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
 }
 
+// ── Geração de Cenas ───────────────────────────────────────────────────────
 export interface GenerateScenesParams {
     narration_text: string;
     duration: number;
@@ -264,11 +237,9 @@ export interface GenerateScenesResponse {
 export async function generateScenesWithGemini(
     params: GenerateScenesParams
 ): Promise<GenerateScenesResponse> {
-    // Logic for Intro/Outro injection
     const hasIntroOutro = !!params.title && !!params.targetSceneCount;
     const storySceneCount = hasIntroOutro && params.targetSceneCount ? params.targetSceneCount : undefined;
 
-    // Calculate scene count constraints
     let minScenes = 6;
     let maxScenes = 8;
 
@@ -279,14 +250,8 @@ export async function generateScenesWithGemini(
         minScenes = params.targetSceneCount;
         maxScenes = params.targetSceneCount;
     } else {
-        if (params.duration >= 5) {
-            minScenes = 8;
-            maxScenes = 12;
-        }
-        if (params.duration >= 10) {
-            minScenes = 12;
-            maxScenes = 15;
-        }
+        if (params.duration >= 5) { minScenes = 8; maxScenes = 12; }
+        if (params.duration >= 10) { minScenes = 12; maxScenes = 15; }
     }
 
     const totalSeconds = params.duration * 60;
@@ -300,6 +265,8 @@ REGRAS DE SEPARAÇÃO:
 1. QUANTIDADE DE CENAS: Crie EXATAMENTE ${minScenes} cenas.
 2. EMOÇÕES: alegre, calma, aventura, surpresa, medo, tristeza, curiosidade.
 3. FORMATO: JSON válido sem markdown.
+4. NÃO crie cenas de introdução (como título do livro) ou encerramento (como 'inscreva-se'). Foque apenas no conteúdo da história.
+5. DESCRIÇÃO VISUAL: Cada cena deve descrever UMA única imagem estática e clara. Evite colagens, múltiplos painéis ou sequências.
 
 TEXTO DA NARRAÇÃO:
 ${params.narration_text}
@@ -318,50 +285,68 @@ FORMATO DE SAÍDA:
   ]
 }`;
 
-    return await withModelFallback(async (model) => {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text().trim();
+    const rawText = await callVertexText(prompt, { jsonMode: true, temperature: 0.7 });
+    let text = rawText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const jsonStart = text.indexOf('{');
+    text = text.substring(jsonStart !== -1 ? jsonStart : 0);
 
-        text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        const jsonStart = text.indexOf('{');
-        text = text.substring(jsonStart !== -1 ? jsonStart : 0);
-
-        const data = JSON.parse(text);
-        const scenes = data.scenes || [];
-
-        // Post-processing for Intro/Outro injection
-        let finalScenes: Scene[] = scenes;
-        
-        if (hasIntroOutro) {
-            const introScene: Scene = {
-                order: 0,
-                narration_text: `Hoje eu vou contar uma historinha super doce e cheia de aventura! É a história "${params.title}"!`,
-                visual_description: `TITLE CARD: "${params.title}". Movie Poster Layout.`,
-                emotion: 'alegre',
-                duration_estimate: 6,
-                characters: ['__PROTAGONIST__'],
-                image_prompt: `Movie Poster for "${params.title}".`
-            };
-
-            const outroScene: Scene = {
-                order: 0,
-                narration_text: `Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Tchau, tchau!`,
-                visual_description: `Vibrant ending card asking to Subscribe and Like.`,
-                emotion: 'alegre',
-                duration_estimate: 8,
-                characters: [],
-                image_prompt: 'ENDING_CARD_PLACEHOLDER'
-            };
-
-            finalScenes = [introScene, ...finalScenes, outroScene];
-            finalScenes = finalScenes.map((scene, idx) => ({ ...scene, order: idx + 1 }));
+    let data: any;
+    try {
+        data = JSON.parse(text);
+    } catch (parseErr) {
+        console.warn('[Gemini] JSON truncado, tentando reparar...');
+        // Try to repair truncated JSON by closing open structures
+        let repaired = text;
+        // Remove trailing incomplete object/string
+        repaired = repaired.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, '');
+        repaired = repaired.replace(/,\s*\{[^}]*$/, '');
+        // Count and close open brackets
+        const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+        const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+        for (let i = 0; i < openBrackets; i++) repaired += ']';
+        for (let i = 0; i < openBraces; i++) repaired += '}';
+        try {
+            data = JSON.parse(repaired);
+            console.log('[Gemini] JSON reparado com sucesso, cenas recuperadas:', data.scenes?.length || 0);
+        } catch (e2) {
+            console.error('[Gemini] Reparo falhou, retrying...');
+            // Retry with shorter max tokens
+            const retryText = await callVertexText(prompt, { jsonMode: true, temperature: 0.5, maxOutputTokens: 16384 });
+            let retryClean = retryText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+            const retryStart = retryClean.indexOf('{');
+            retryClean = retryClean.substring(retryStart !== -1 ? retryStart : 0);
+            data = JSON.parse(retryClean);
         }
+    }
+    let finalScenes: Scene[] = data.scenes || [];
 
-        return { scenes: finalScenes };
-    }, { models: PRIMARY_MODELS });
+    if (hasIntroOutro) {
+        const introScene: Scene = {
+            order: 0,
+            narration_text: `Hoje eu vou contar uma historinha super doce e cheia de aventura! É a história "${params.title}"!`,
+            visual_description: `TITLE CARD: "${params.title}". Movie Poster Layout.`,
+            emotion: 'alegre',
+            duration_estimate: 6,
+            characters: ['__PROTAGONIST__'],
+            image_prompt: `Movie Poster for "${params.title}".`,
+        };
+        const outroScene: Scene = {
+            order: 0,
+            narration_text: `Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Tchau, tchau!`,
+            visual_description: `Vibrant ending card asking to Subscribe and Like.`,
+            emotion: 'alegre',
+            duration_estimate: 8,
+            characters: [],
+            image_prompt: 'ENDING_CARD_PLACEHOLDER',
+        };
+        finalScenes = [introScene, ...finalScenes, outroScene];
+        finalScenes = finalScenes.map((scene, idx) => ({ ...scene, order: idx + 1 }));
+    }
+
+    return { scenes: finalScenes };
 }
 
+// ── Prompt de Imagem ───────────────────────────────────────────────────────
 export interface GenerateImagePromptParams {
     visual_description: string;
     emotion: string;
@@ -373,19 +358,41 @@ export interface GenerateImagePromptParams {
 }
 
 export async function generateImagePrompt(params: GenerateImagePromptParams): Promise<string> {
-    const style = params.visual_style || '3D Pixar/DreamWorks Animation style';
-    let characterDetails = '';
-    
+    // Build a simple, natural descriptive prompt — the style that works best with Gemini 2.5 Flash Image
+    const parts: string[] = [];
+
+    // Character descriptions first (most important for consistency)
     if (params.characterDescriptions && params.characters.length > 0) {
-        const characterParts: string[] = [];
         params.characters.forEach(charName => {
-            const description = params.characterDescriptions![charName] || charName;
-            characterParts.push(`${charName}: ${description.substring(0, 500)}`);
+            if (charName === '__PROTAGONIST__') return;
+            const desc = params.characterDescriptions![charName];
+            if (desc) {
+                parts.push(desc.substring(0, 200));
+            }
         });
-        characterDetails = characterParts.join('. ');
     }
 
-    return `${style}. SCENE ACTION: ${params.visual_description}. CHARACTERS: ${characterDetails}. Emotion: ${params.emotion}.`;
+    // Scene action
+    if (params.visual_description) {
+        parts.push(params.visual_description);
+    }
+
+    // Style
+    const is2D = params.visual_style === 'Estilo 2D Cartoon';
+    const styleStr = is2D
+        ? '2D cartoon illustration style, modern children storybook art, crisp clean lines, vibrant colors, well-proportioned anatomy, correct number of limbs'
+        : '3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs';
+
+    // Emotion
+    const emotionStr = params.emotion ? `, ${params.emotion} mood` : '';
+
+    return `${parts.join(', ')}, ${styleStr}${emotionStr}, children book illustration, widescreen 16:9`;
+}
+
+export interface GenerateCharacterDescriptionsParams {
+    characters: string[];
+    visual_style: string;
+    visual_description: string;
 }
 
 export async function generateCharacterDescriptions(
@@ -398,31 +405,20 @@ Cena: ${params.visual_description}
 
 Retorne um JSON: {"Nome": "Descrição..."}`;
 
-    return await withModelFallback(async (model) => {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text().trim();
-        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-        return JSON.parse(text);
-    }, { models: PRIMARY_MODELS });
-}
-
-export async function generateCharacterSheet(
-    params: GenerateCharacterSheetParams
-): Promise<string> {
-    const prompt = `Crie um Character Sheet Pixar Style para "${params.characterName}" baseado na história.`;
-
-    return await withModelFallback(async (model) => {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text().trim();
-    }, { models: PRIMARY_MODELS });
+    const text = await callVertexText(prompt, { jsonMode: true });
+    const cleaned = text.trim().replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    return JSON.parse(cleaned);
 }
 
 export interface GenerateCharacterSheetParams {
     characterName: string;
     storyText: string;
     characterSheetTemplate?: string;
+}
+
+export async function generateCharacterSheet(params: GenerateCharacterSheetParams): Promise<string> {
+    const prompt = `Crie um Character Sheet Pixar Style para "${params.characterName}" baseado na história.`;
+    return await callVertexText(prompt, { temperature: 0.6 });
 }
 
 export async function generateAllCharacterSheets(
@@ -439,4 +435,8 @@ export async function generateAllCharacterSheets(
         }
     }
     return sheets;
+}
+
+export async function generateText(prompt: string): Promise<string> {
+    return await callVertexText(prompt, { temperature: 0.7 });
 }

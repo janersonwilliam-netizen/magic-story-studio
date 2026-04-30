@@ -59,16 +59,17 @@ export function CreateStoryForm({ onCancel, onSuccess }: CreateStoryFormProps) {
                 }
             };
 
-            // IMPORTANT: Only use columns that exist in the database schema!
-            // Schema has: id, user_id, title, preview_image, data, is_complete, created_at, updated_at
-            // All other config goes in the 'data' JSONB field
             const { data, error: insertError } = await supabase
                 .from('stories')
                 .insert({
                     user_id: user?.id,
                     title: formData.title.trim(),
-                    data: initialStudioState, // All config saved in JSONB 'data' field
-                    is_complete: false,
+                    age_group: formData.age_group,
+                    tone: formData.tone,
+                    duration: formData.duration,
+                    visual_style: formData.visual_style,
+                    custom_instructions: instructionsWithMeta,
+                    status: 'draft',
                 })
                 .select()
                 .single();

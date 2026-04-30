@@ -187,7 +187,16 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 if (!optimizedPrompt) {
                     const characterDescriptionsMap: Record<string, string> = {};
                     Object.values(storyWithScenes.characters).forEach(char => {
-                        characterDescriptionsMap[char.name] = char.description;
+                        // Build RICH description from ALL CharacterDNA fields
+                        const colorsList = char.mainColors?.length ? char.mainColors.join(', ') : '';
+                        const parts = [
+                            char.species ? `Species: ${char.species}` : '',
+                            colorsList ? `Colors: ${colorsList}` : '',
+                            char.clothing ? `Clothing: ${char.clothing}` : '',
+                            char.accessories ? `Accessories: ${char.accessories}` : '',
+                            char.full_description || char.description || '',
+                        ].filter(Boolean);
+                        characterDescriptionsMap[char.name] = parts.join('. ');
                     });
 
                     const promptResult = await generateImagePrompt({
@@ -285,8 +294,9 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 }));
             }
 
-            // Small delay between generations to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Delay between generations to avoid Vertex AI rate limiting (429)
+            // Increased to 7 seconds for better stability with Gemini 2.5 Flash Image
+            await new Promise(resolve => setTimeout(resolve, 7000));
         }
 
         setGenerating(false);
@@ -306,7 +316,16 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
             const characterDescriptions: Record<string, string> = {};
             if (storyWithScenes.characters) {
                 Object.values(storyWithScenes.characters).forEach(char => {
-                    characterDescriptions[char.name] = char.description;
+                    // Build RICH description from ALL CharacterDNA fields
+                    const colorsList = char.mainColors?.length ? char.mainColors.join(', ') : '';
+                    const parts = [
+                        char.species ? `Species: ${char.species}` : '',
+                        colorsList ? `Colors: ${colorsList}` : '',
+                        char.clothing ? `Clothing: ${char.clothing}` : '',
+                        char.accessories ? `Accessories: ${char.accessories}` : '',
+                        char.full_description || char.description || '',
+                    ].filter(Boolean);
+                    characterDescriptions[char.name] = parts.join('. ');
                 });
             }
 

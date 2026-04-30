@@ -26,9 +26,20 @@ export function StudioIndex() {
     const storyIdFromUrl = searchParams.get('id');
     const stepFromUrl = searchParams.get('step') as StudioStep | null;
 
+    // Fallback UUID generator for non-HTTPS contexts (like local IP network access)
+    const generateUUID = () => {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    };
+
     // Generate a stable ID on mount if none exists in URL
     // This ensures the same ID is used throughout the entire story creation process
-    const storyIdRef = useRef<string>(storyIdFromUrl || crypto.randomUUID());
+    const storyIdRef = useRef<string>(storyIdFromUrl || generateUUID());
 
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -248,6 +259,18 @@ export function StudioIndex() {
         saveProgress(newState);
     };
 
+    // Handler for IMAGES partial updates (auto-save each generated image)
+    const handleImagesPartialUpdate = (storyWithScenes: StoryWithScenes) => {
+        setStudioState(prev => {
+            const newState: StudioState = {
+                ...prev,
+                storyWithScenes
+            };
+            void saveProgress(newState);
+            return newState;
+        });
+    };
+
     // Handler for TIMELINE page completion
     const handleTimelineComplete = (storyWithTimeline: any) => {
         const newState: StudioState = {
@@ -379,6 +402,7 @@ export function StudioIndex() {
                     <ImagesPage
                         storyWithScenes={studioState.storyWithScenes}
                         onComplete={handleImagesComplete}
+                        onPartialUpdate={handleImagesPartialUpdate}
                         onBack={() => goToStep('THUMBNAIL')}
                     />
                 )}

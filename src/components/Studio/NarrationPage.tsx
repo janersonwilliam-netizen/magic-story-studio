@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { StoryConfig, StoryWithNarration } from '../../types/studio';
 import { generateStoryWithGemini } from '../../services/gemini';
-import { generateAudioNarration } from '../../services/tts';
+import { generateAudioNarration, GEMINI_VOICES } from '../../services/tts';
 import { Loader2, Check, Sparkles, Volume2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,10 +25,11 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
     const [generating, setGenerating] = useState(!existingStory?.storyText);
     const [storyText, setStoryText] = useState(existingStory?.storyText || '');
     const [error, setError] = useState('');
-    const [voiceName, setVoiceName] = useState(existingStory?.voiceName || 'pt-BR-Neural2-A');
+    const [voiceName, setVoiceName] = useState(existingStory?.voiceName || 'Kore');
     const [emotion, setEmotion] = useState(existingStory?.emotion || 'warmly');
+    const [temperature, setTemperature] = useState(1.0);
     const [generatingAudio, setGeneratingAudio] = useState(false);
-    const [audioPreviewUrl, setAudioPreviewUrl] = useState('');
+    const [audioPreviewUrl, setAudioPreviewUrl] = useState(existingStory?.audioUrl || '');
 
     useEffect(() => {
         // Only generate if we don't have existing story text
@@ -96,9 +97,11 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
             console.log('[NarrationPage] Generating audio preview with voice:', voiceName, 'emotion:', emotion);
 
             const audioUrl = await generateAudioNarration({
-                text: storyText,
+                text: storyText.replace(/\\n/g, '\n'),
                 emotion: emotion as any,
-                voiceName: voiceName
+                voiceName: voiceName,
+                targetDurationMinutes: config.duration,
+                temperature: temperature
             });
 
             setAudioPreviewUrl(audioUrl);
@@ -119,7 +122,8 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                 storyText: storyText,
                 narrationText: storyText,
                 voiceName: voiceName,
-                emotion: emotion
+                emotion: emotion,
+                audioUrl: audioPreviewUrl
             };
             onComplete(storyWithNarration);
         }
@@ -199,7 +203,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                         <div className="bg-muted/30 rounded-xl p-6 mb-6 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-border">
                             <div className="prose prose-lg max-w-none prose-invert">
                                 <p className="text-foreground leading-relaxed whitespace-pre-wrap">
-                                    {storyText}
+                                    {storyText.replace(/\\n/g, '\n')}
                                 </p>
                             </div>
                         </div>
@@ -208,64 +212,78 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                         <div className="bg-gradient-to-r from-primary/5 to-purple-500/5 rounded-xl p-6 mb-6 border border-primary/10">
                             <h3 className="text-lg font-bold text-foreground mb-4">🎙️ Configurações de Narração</h3>
 
-                            {/* Voice Selection */}
-                            <div className="mb-4">
-                                <label className="block text-sm font-semibold text-muted-foreground mb-3">
-                                    VOZ DA NARRAÇÃO
+                            {/* Model Selection */}
+                            <div className="mb-6">
+                                <label className="block text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                                    MODELO
                                 </label>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {/* Google Cloud Voices */}
-                                    <div className="col-span-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2 mb-1">Google Cloud (Alta Qualidade)</div>
-                                    {[
-                                        { value: 'pt-BR-Neural2-A', label: 'Feminina (Realista)', icon: '👩✨' },
-                                        { value: 'pt-BR-Neural2-B', label: 'Masculina (Realista)', icon: '👨✨' },
-                                        { value: 'pt-BR-Neural2-C', label: 'Feminina (Suave)', icon: '👱‍♀️' },
-                                        { value: 'pt-BR-Wavenet-A', label: 'Feminina (Natural)', icon: '👩' },
-                                        { value: 'pt-BR-Wavenet-B', label: 'Masculina (Natural)', icon: '👨' },
-                                    ].map((voice) => (
-                                        <button
-                                            key={voice.value}
-                                            type="button"
-                                            onClick={() => setVoiceName(voice.value)}
-                                            className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${voiceName === voice.value
-                                                ? 'bg-blue-600 text-white shadow-lg scale-105'
-                                                : 'bg-card text-muted-foreground hover:bg-secondary border border-border'
-                                                }`}
-                                        >
-                                            <span className="text-lg">{voice.icon}</span>
-                                            <span>{voice.label}</span>
-                                        </button>
-                                    ))}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                                    {/* Flash TTS Pill */}
+                                    <div className="relative group cursor-pointer">
+                                        <input type="radio" id="m-flash" name="tts-model" value="flash-tts" className="absolute opacity-0 w-0 h-0" defaultChecked />
+                                        <label htmlFor="m-flash" className="flex flex-col gap-1 p-3 rounded-xl border-[1.5px] border-primary/80 bg-primary/10 text-primary cursor-pointer transition-all">
+                                            <span className="font-bold text-sm tracking-wide">⚡ Flash TTS</span>
+                                            <span className="text-xs opacity-80">Rápido • Natural</span>
+                                            <span className="text-[11px] font-bold text-primary mt-1">~$0,006/min</span>
+                                        </label>
+                                    </div>
 
-                                    {/* Gemini Voices */}
-                                    <div className="col-span-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-1">Gemini AI (Limitado)</div>
+                                    {/* Pro TTS Pill */}
+                                    <div className="relative group cursor-pointer opacity-50">
+                                        <input type="radio" id="m-pro" name="tts-model" value="pro-tts" className="absolute opacity-0 w-0 h-0" disabled />
+                                        <label htmlFor="m-pro" className="flex flex-col gap-1 p-3 rounded-xl border-[1.5px] border-border bg-card cursor-not-allowed transition-all">
+                                            <span className="font-bold text-sm text-foreground">🎭 Pro TTS</span>
+                                            <span className="text-xs text-muted-foreground">Alta qualidade</span>
+                                            <span className="text-[11px] font-bold text-amber-500 mt-1">~$0,019/min</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Voice Selection */}
+                            <div className="mb-8">
+                                <label className="block text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                                    VOZ
+                                </label>
+                                <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
                                     {[
-                                        { value: 'Puck', label: 'Infantil/Jovem', icon: '👶' },
-                                        { value: 'Kore', label: 'Feminina (AI)', icon: '👩' },
-                                        { value: 'Charon', label: 'Masculina (AI)', icon: '👨' },
-                                    ].map((voice) => (
-                                        <button
-                                            key={voice.value}
-                                            type="button"
-                                            onClick={() => setVoiceName(voice.value)}
-                                            className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${voiceName === voice.value
-                                                ? 'bg-purple-600 text-white shadow-lg scale-105'
-                                                : 'bg-card text-muted-foreground hover:bg-secondary border border-border'
-                                                }`}
-                                        >
-                                            <span className="text-lg">{voice.icon}</span>
-                                            <span>{voice.label}</span>
-                                        </button>
+                                        { id: 'Kore', name: 'Kore', icon: '🧒', desc: 'Infantil • Doce' },
+                                        { id: 'Puck', name: 'Puck', icon: '🧒', desc: 'Jovem • Alegre' },
+                                        { id: 'Aoede', name: 'Aoede', icon: '👩', desc: 'Feminina • Suave' },
+                                        { id: 'Charon', name: 'Charon', icon: '👨', desc: 'Masculina' },
+                                        { id: 'Fenrir', name: 'Fenrir', icon: '🦁', desc: 'Dramática' },
+                                        { id: 'Leda', name: 'Leda', icon: '👧', desc: 'Criança • Fofa' },
+                                    ].map((v) => (
+                                        <div key={v.id} className="relative group cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                id={`v-${v.id}`}
+                                                name="tts-voice"
+                                                className="absolute opacity-0 w-0 h-0"
+                                                checked={voiceName === v.id}
+                                                onChange={() => setVoiceName(v.id)}
+                                            />
+                                            <label
+                                                htmlFor={`v-${v.id}`}
+                                                className={`flex flex-col gap-1 p-3 rounded-xl border-[1.5px] cursor-pointer transition-all ${voiceName === v.id
+                                                        ? 'border-primary bg-primary/10 text-primary scale-[1.02]'
+                                                        : 'border-border bg-card hover:border-primary/50 text-foreground'
+                                                    }`}
+                                            >
+                                                <span className="font-bold text-sm tracking-wide">{v.icon} {v.name}</span>
+                                                <span className={`text-xs ${voiceName === v.id ? 'opacity-80' : 'text-muted-foreground'}`}>{v.desc}</span>
+                                            </label>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Emotion Selection */}
-                            <div className="mb-4">
-                                <label className="block text-sm font-semibold text-muted-foreground mb-3">
+                            <div className="mb-8">
+                                <label className="block text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                                     EMOÇÃO DA NARRAÇÃO
                                 </label>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
                                     {[
                                         { value: 'warmly', label: 'Calorosa', icon: '🤗' },
                                         { value: 'cheerfully', label: 'Alegre', icon: '😊' },
@@ -274,21 +292,31 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                                         { value: 'mysteriously', label: 'Misteriosa', icon: '🔮' },
                                         { value: 'sadly', label: 'Triste', icon: '😢' },
                                     ].map((emotionOption) => (
-                                        <button
-                                            key={emotionOption.value}
-                                            type="button"
-                                            onClick={() => setEmotion(emotionOption.value)}
-                                            className={`py-2 px-3 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${emotion === emotionOption.value
-                                                ? 'bg-primary text-primary-foreground shadow-lg scale-105'
-                                                : 'bg-card text-muted-foreground hover:bg-secondary border border-border'
-                                                }`}
-                                        >
-                                            <span className="text-lg">{emotionOption.icon}</span>
-                                            <span>{emotionOption.label}</span>
-                                        </button>
+                                        <div key={emotionOption.value} className="relative group cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                id={`e-${emotionOption.value}`}
+                                                name="tts-emotion"
+                                                className="absolute opacity-0 w-0 h-0"
+                                                checked={emotion === emotionOption.value}
+                                                onChange={() => setEmotion(emotionOption.value)}
+                                            />
+                                            <label
+                                                htmlFor={`e-${emotionOption.value}`}
+                                                className={`flex items-center gap-2 p-3 rounded-xl border-[1.5px] cursor-pointer transition-all ${emotion === emotionOption.value
+                                                        ? 'border-primary bg-primary/10 text-primary scale-[1.02]'
+                                                        : 'border-border bg-card hover:border-primary/50 text-foreground'
+                                                    }`}
+                                            >
+                                                <span className="text-lg">{emotionOption.icon}</span>
+                                                <span className="font-bold text-sm">{emotionOption.label}</span>
+                                            </label>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
+
+
 
                             {/* Audio Preview Button */}
                             <button
@@ -313,9 +341,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                             {audioPreviewUrl && (
                                 <div className="mt-4 p-4 bg-card rounded-lg border-2 border-primary/20">
                                     <p className="text-sm font-semibold text-muted-foreground mb-2">Preview do Áudio:</p>
-                                    <audio controls className="w-full">
-                                        <source src={audioPreviewUrl} type="audio/wav" />
-                                    </audio>
+                                    <audio controls className="w-full" src={audioPreviewUrl} />
                                 </div>
                             )}
                         </div>

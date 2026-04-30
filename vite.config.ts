@@ -9,17 +9,19 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       host: '0.0.0.0',
       proxy: {
-        '/api/vertex': {
-          target: 'https://vertex-image-service-498496800797.us-central1.run.app',
+        '/api': {
+          target: 'http://127.0.0.1:8788',
+          changeOrigin: true
+        },
+        '/api/pollinations': {
+          target: 'https://image.pollinations.ai',
           changeOrigin: true,
-          headers: {
-            'X-Vertex-Secret': 'mss-secret-2024'
-          }
+          rewrite: (path) => path.replace(/^\/api\/pollinations/, ''),
         }
       },
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Embedder-Policy': 'credentialless',
       },
     },
     plugins: [react()],

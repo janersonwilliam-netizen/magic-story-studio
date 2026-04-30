@@ -35,6 +35,7 @@ export interface StoryWithNarration extends StoryConfig {
     storyId: string;
     storyText: string;
     narrationText: string;
+    audioUrl?: string; // Audio preview url generated on Narration page
 }
 
 /**

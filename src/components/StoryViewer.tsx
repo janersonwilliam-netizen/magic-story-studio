@@ -102,6 +102,18 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
         }
     };
 
+    const getAudioDownloadName = () => {
+        const title = (story?.title || 'narracao').trim().toLowerCase();
+        const slug = title
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80);
+
+        return `${slug || 'narracao'}.mp3`;
+    };
+
     useEffect(() => {
         async function getUser() {
             const { data: { user } } = await supabase.auth.getUser();
@@ -400,7 +412,10 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
         const scene = scenes[index];
         try {
             setGeneratingAudioIndex(index);
-            const audioUrl = await generateAudioNarration({ text: scene.narration_text });
+            const audioUrl = await generateAudioNarration({
+                text: scene.narration_text,
+                targetDurationMinutes: scene.duration_estimate ? scene.duration_estimate / 60 : undefined
+            });
             const newScenes = [...scenes];
             newScenes[index] = { ...scene, audioUrl };
             setScenes(newScenes);
@@ -418,7 +433,10 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
         if (!story?.story_text) return;
         try {
             setGeneratingFullAudio(true);
-            const audioUrl = await generateLongAudioNarration({ text: story.narration_text || story.story_text });
+            const audioUrl = await generateLongAudioNarration({
+                text: story.narration_text || story.story_text,
+                targetDurationMinutes: story.duration || undefined
+            });
             await supabase.from('stories').update({ full_audio_url: audioUrl }).eq('id', storyId);
             setStory({ ...story, full_audio_url: audioUrl });
         } catch (err: any) {
@@ -724,7 +742,7 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                                     <audio controls src={story.full_audio_url} className="w-full" />
                                 </div>
                                 <div className="flex justify-between items-center">
-                                    <a href={story.full_audio_url} download className="text-sm text-[#FF0000] hover:underline flex items-center gap-1">
+                                    <a href={story.full_audio_url} download={getAudioDownloadName()} className="text-sm text-[#FF0000] hover:underline flex items-center gap-1">
                                         <Download className="h-4 w-4" />Baixar MP3
                                     </a>
                                     <button onClick={handleDeleteAudio} className="p-2 text-red-500 hover:bg-red-50 rounded-full flex items-center gap-2">

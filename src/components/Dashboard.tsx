@@ -11,8 +11,10 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadStories();
-    }, []);
+        if (user?.id) {
+            loadStories();
+        }
+    }, [user?.id]);
 
     const loadStories = async () => {
         try {

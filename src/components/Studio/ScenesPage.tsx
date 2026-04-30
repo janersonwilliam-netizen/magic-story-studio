@@ -132,7 +132,7 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
             const characterPrompt = `VISUAL STYLE: ${story.visualStyle}
 ${story.visualStyle === 'Estilo 2D Cartoon'
                     ? '- Premium 2D cartoon illustration. Vibrant colors, soft shading, clean lines. Modern mobile game art style.\n- NO 3D render. Cute, magical storybook look.'
-                    : '- 3D Pixar/DreamWorks Style Character\n- BIG expressive eyes (35-40% of face)\n- Soft, rounded, cute features'}
+                    : '- Premium 3D CGI Animation Studio Style Character\n- BIG expressive eyes (35-40% of face)\n- Soft, rounded, cute features'}
 - Adorable, friendly, non-threatening appearance
 - Perfect for children ages 3-8
 

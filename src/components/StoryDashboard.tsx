@@ -39,12 +39,19 @@ export function StoryDashboard() {
             setLoading(true);
             setError('');
 
+            console.log("Current user ID:", user?.id);
+
             const { data, error } = await supabase
                 .from('stories')
-                .select('id, title, status, age_group, tone, created_at')
+                .select('id, title, status, age_group, tone, created_at, user_id')
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            console.log("Fetched stories from Supabase:", data);
+
+            if (error) {
+                console.error("Supabase Error:", error);
+                throw error;
+            }
             setStories(data || []);
         } catch (err: any) {
             setError(err.message);
