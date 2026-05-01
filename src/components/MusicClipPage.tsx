@@ -121,28 +121,39 @@ function StepCharacters({ project, onChange, onNext }: { project: MusicProject; 
   const [loading, setLoading] = useState(false);
   const [genImgIndex, setGenImgIndex] = useState<number | null>(null);
 
-  const handleGenerateChars = async () => {
-    setLoading(true);
-    try {
-      const chars = await generateMusicCharacters(project.lyrics, project.title, project.visualStyle);
-      onChange({ characters: chars });
-    } catch (e: any) { alert(e.message); }
-    finally { setLoading(false); }
-  };
-
-  const handleGenRefImage = async (idx: number) => {
-    const char = project.characters[idx];
-    if (!char) return;
+  const handleGenRefImage = async (idx: number, currentChars = project.characters) => {
+    const char = currentChars[idx];
+    if (!char) return currentChars;
     setGenImgIndex(idx);
     try {
       const prompt = `Character reference sheet: ${char.name}. ${char.description}. Full body, front view, plain white background, character design sheet.`;
       const url = await generateImage(prompt, project.visualStyle);
-      const updated = [...project.characters];
+      const updated = [...currentChars];
       updated[idx] = { ...char, referenceImageUrl: url };
       onChange({ characters: updated });
-    } catch (e: any) { alert(e.message); }
-    finally { setGenImgIndex(null); }
+      return updated;
+    } catch (e: any) { 
+      console.error(e);
+      return currentChars; 
+    } finally { 
+      setGenImgIndex(null); 
+    }
   };
+
+  const handleGenerateChars = async () => {
+    setLoading(true);
+    try {
+      let chars = await generateMusicCharacters(project.lyrics, project.title, project.visualStyle);
+      onChange({ characters: chars });
+      
+      // Auto-generate images sequentially
+      for (let i = 0; i < chars.length; i++) {
+        chars = await handleGenRefImage(i, chars);
+      }
+    } catch (e: any) { alert(e.message); }
+    finally { setLoading(false); }
+  };
+
 
   const updateChar = (idx: number, field: keyof MusicCharacter, val: string) => {
     const updated = [...project.characters];
@@ -170,13 +181,28 @@ function StepCharacters({ project, onChange, onNext }: { project: MusicProject; 
             <div className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-muted flex items-center justify-center relative group">
               {char.referenceImageUrl
                 ? <img src={char.referenceImageUrl} alt={char.name} className="w-full h-full object-cover" />
-                : <Users className="w-8 h-8 text-muted-foreground" />}
+                : <Image className="w-8 h-8 text-muted-foreground opacity-30" />}
+              
+              {/* Always show generate button if no image, otherwise show on hover */}
               <button
                 onClick={() => handleGenRefImage(idx)}
                 disabled={genImgIndex === idx}
-                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                className={`absolute inset-0 flex flex-col items-center justify-center transition-all ${
+                  !char.referenceImageUrl && genImgIndex !== idx
+                    ? "bg-black/40 hover:bg-black/60" 
+                    : "bg-black/60 opacity-0 group-hover:opacity-100"
+                }`}
               >
-                {genImgIndex === idx ? <Loader2 className="w-5 h-5 text-white animate-spin" /> : <RefreshCw className="w-5 h-5 text-white" />}
+                {genImgIndex === idx ? (
+                  <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                ) : !char.referenceImageUrl ? (
+                  <>
+                    <Sparkles className="w-5 h-5 text-white mb-1" />
+                    <span className="text-[10px] text-white font-bold uppercase">Gerar</span>
+                  </>
+                ) : (
+                  <RefreshCw className="w-6 h-6 text-white" />
+                )}
               </button>
             </div>
             <div className="flex-1 space-y-3">
