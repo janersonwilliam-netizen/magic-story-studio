@@ -177,8 +177,8 @@ function StepCharacters({ project, onChange, onNext }: { project: MusicProject; 
 
       <div className="space-y-4">
         {project.characters.map((char, idx) => (
-          <div key={idx} className="bg-card border border-border rounded-2xl p-5 flex gap-4">
-            <div className="w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-muted flex items-center justify-center relative group">
+          <div key={idx} className="bg-card border border-border rounded-2xl p-5 flex flex-col md:flex-row gap-6">
+            <div className="w-full md:w-48 h-48 flex-shrink-0 rounded-xl overflow-hidden bg-muted flex items-center justify-center relative group shadow-sm">
               {char.referenceImageUrl
                 ? <img src={char.referenceImageUrl} alt={char.name} className="w-full h-full object-cover" />
                 : <Image className="w-8 h-8 text-muted-foreground opacity-30" />}
@@ -205,11 +205,13 @@ function StepCharacters({ project, onChange, onNext }: { project: MusicProject; 
                 )}
               </button>
             </div>
-            <div className="flex-1 space-y-3">
-              <input value={char.name} onChange={e => updateChar(idx, "name", e.target.value)} placeholder="Nome do personagem" className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
-              <textarea value={char.description} onChange={e => updateChar(idx, "description", e.target.value)} placeholder="Descricao visual detalhada..." rows={3} className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary" />
+            <div className="flex-1 space-y-3 flex flex-col">
+              <div className="flex justify-between items-center gap-3">
+                <input value={char.name} onChange={e => updateChar(idx, "name", e.target.value)} placeholder="Nome do personagem" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary" />
+                <button onClick={() => removeChar(idx)} className="p-3 bg-muted rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"><Trash2 className="w-5 h-5" /></button>
+              </div>
+              <textarea value={char.description} onChange={e => updateChar(idx, "description", e.target.value)} placeholder="Descricao visual detalhada..." className="w-full flex-1 min-h-[100px] px-4 py-3 rounded-xl border border-border bg-background text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
-            <button onClick={() => removeChar(idx)} className="p-2 text-muted-foreground hover:text-destructive transition-colors self-start"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
       </div>
