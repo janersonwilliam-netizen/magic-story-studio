@@ -15,6 +15,7 @@ import PollinationsTestPage from './components/PollinationsTestPage';
 import { IdeaResearchPage } from './components/IdeaResearchPage';
 import { PlaygroundPage } from './components/PlaygroundPage';
 import { VideoGenPage } from './components/VideoGenPage';
+import { MusicClipPage } from './components/MusicClipPage';
 
 export default function App() {
     return (
@@ -43,6 +44,7 @@ export default function App() {
                         <Route path="/ideas" element={<IdeaResearchPage />} />
                         <Route path="/playground" element={<PlaygroundPage />} />
                         <Route path="/video-gen" element={<VideoGenPage />} />
+                        <Route path="/music-clip" element={<MusicClipPage />} />
                     </Route>
 
                     {/* Default redirect */}

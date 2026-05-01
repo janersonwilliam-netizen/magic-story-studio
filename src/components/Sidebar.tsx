@@ -1,11 +1,11 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video, FolderOpen, Youtube, Flower2, Bot } from 'lucide-react';
+import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video, FolderOpen, Youtube, Flower2, Bot, Music } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
-    currentPage: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen';
-    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen') => void;
+    currentPage: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip';
+    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip') => void;
     isOpen: boolean;
 }
 
@@ -23,6 +23,7 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
         { id: 'playground' as const, label: 'Playground', icon: Bot },
         { id: 'ideas' as const, label: 'Pesquisa de Ideias', icon: Youtube },
         { id: 'video-gen' as const, label: 'Geração de Vídeo', icon: Video },
+        { id: 'music-clip' as const, label: 'Clipe Musical', icon: Music },
     ];
 
     // Items for the bottom/secondary section
