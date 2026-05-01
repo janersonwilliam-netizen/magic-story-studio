@@ -114,7 +114,7 @@ const supabaseStoryStorage = {
             createdAt: new Date(record.created_at).getTime(),
             updatedAt: new Date(record.updated_at).getTime(),
             previewImage: record.preview_image,
-            data: { currentStep: record.currentStep } as StudioState,
+            data: { currentStep: record.currentStep || 'CONFIG' } as StudioState,
             isComplete: record.is_complete
         }));
     },
