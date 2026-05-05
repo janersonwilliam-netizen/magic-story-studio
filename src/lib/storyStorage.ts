@@ -185,6 +185,8 @@ const supabaseStoryStorage = {
             tone: config?.tone,
             age_group: config?.ageGroup,
             duration: config?.duration,
+            visual_style: config?.visualStyle,
+            status: story.isComplete ? 'completed' : 'draft',
             story_text: storyData?.storyText,
             narration_text: storyData?.narrationText,
             custom_instructions: config?.storyIdea,
