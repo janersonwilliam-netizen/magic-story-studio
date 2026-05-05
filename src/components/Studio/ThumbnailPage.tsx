@@ -34,13 +34,13 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
     });
 
     // Find the Intro Scene (usually scene 0/1)
-    const introSceneIndex = storyWithScenes.scenes.findIndex(s => s.visualDescription.includes('TITLE CARD'));
+    const introSceneIndex = storyWithScenes.scenes.findIndex((s: Scene) => s.visualDescription.includes('TITLE CARD'));
     const introScene = storyWithScenes.scenes[introSceneIndex];
 
     const toggleCharacter = (name: string) => {
-        setSelectedCharacters(prev => {
+        setSelectedCharacters((prev: string[]) => {
             if (prev.includes(name)) {
-                return prev.filter(c => c !== name);
+                return prev.filter((c: string) => c !== name);
             } else {
                 if (prev.length >= 2) {
                     return [...prev, name];
@@ -121,7 +121,7 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
             // Let's rely on the Original Image + Prompt to Guide the change.
 
             if (language === 'original') {
-                selectedCharacters.forEach(name => {
+                selectedCharacters.forEach((name: string) => {
                     if (storyWithScenes.characterReferenceImages?.[name]) {
                         references.push(storyWithScenes.characterReferenceImages[name]);
                         statuses.push('protagonist');
@@ -132,32 +132,25 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
 
             let prompt = '';
 
-            // Spell out each word letter-by-letter to help AI render text correctly
-            const titleWords = effectiveTitle.split(' ');
-            const spelledWords = titleWords.map(w => `"${w}" (${w.toUpperCase().split('').join('-')})`).join(', ');
-            const titleLines = titleWords.length > 4
-                ? `Line 1: "${titleWords.slice(0, Math.ceil(titleWords.length / 2)).join(' ')}" Line 2: "${titleWords.slice(Math.ceil(titleWords.length / 2)).join(' ')}"`
-                : `"${effectiveTitle}"`;
-
             // Enhanced prompt construction
             if (language !== 'original') {
                 // Prompt for MODIFICATION / VARIATION
                 const styleMod = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
-                    ? `Premium 2D Cartoon style. The title text spelling exactly ${spelledWords} is displayed in bold, colorful 2D typography.`
-                    : `Premium 3D Animated Movie style. The title text spelling exactly ${spelledWords} is displayed in BIG, THICK, CHUNKY 3D EXTRUDED LETTERS. Each word a different vibrant color with glossy shine and drop shadows.`;
+                    ? `Premium 2D Cartoon style. The title text is now "${effectiveTitle}" in bold, colorful 2D typography`
+                    : `Disney/Pixar 3D style. The title text is now "${effectiveTitle}" in BIG, BOLD, 3D TYPOGRAPHY`;
 
                 prompt = `TITULO: ${effectiveTitle}
-CENA: Magical Children's Animated Movie Title Card. ${styleMod}
-IMPORTANT: KEEP THE VISUAL IDENTICAL to the reference image provided. SAME characters, SAME pose, SAME background. ONLY CHANGE THE TEXT TITLE to match the exact spelling. DO NOT add any extra text, translations, subtitles, or credits. The ONLY text must be the title.
+CENA: Movie Poster Layout. ${styleMod} at the top or center.
+IMPORTANT: KEEP THE VISUAL IDENTICAL to the reference image provided. SAME characters, SAME pose, SAME background. ONLY CHANGE THE TEXT TITLE to "${effectiveTitle}".
 EMOÇÃO: Happy, Excited, Adventurous.`;
 
             } else {
                 // Standard Prompt for Original
-                const { generateImageWithReferences } = await import('../../services/google_image');
+                const { generateImageWithReferences } = await import('../../services/google_image'); // just for type check if needed, mostly logic below
 
                 let charText = '';
                 if (selectedNames.length > 0) {
-                    const charDescriptions = selectedNames.map(name => {
+                    const charDescriptions = selectedNames.map((name: string) => {
                         const charDNA = storyWithScenes.characters[name];
                         const visualDesc = charDNA?.description || charDNA?.full_description || '';
                         return `${name} (${visualDesc.slice(0, 150)}...)`;
@@ -168,13 +161,12 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                 }
 
                 const styleModOrig = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
-                    ? `Premium 2D Cartoon style. The title text spelling exactly ${spelledWords} is displayed in bold, colorful 2D typography. Vibrant colors, magical atmosphere, crisp lines, 16:9 wide shot, NO 3D rendering.`
-                    : `Premium 3D Animated Movie style. The title text spelling exactly ${spelledWords} is displayed in BIG, THICK, CHUNKY 3D EXTRUDED LETTERS. Each word a different vibrant color with glossy shine and drop shadows. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.`;
+                    ? `Premium 2D Cartoon style. The title text "${effectiveTitle}" is displayed in bold, colorful 2D typography (like a modern mobile game logo) at the top or center. Vibrant colors, magical atmosphere, crisp lines, 16:9 wide shot, NO 3D rendering.`
+                    : `Disney/Pixar 3D style. The title text "${effectiveTitle}" is displayed in BIG, BOLD, 3D TYPOGRAPHY (like a movie logo) at the top or center. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.`;
 
                 prompt = `TITULO: ${effectiveTitle}
-CENA: Magical Children's Animated Movie Title Card. ${styleModOrig}
-INSTRUÇÃO DE TEXTO: DO NOT add any extra text, translations, subtitles, or credits. The ONLY text on the image MUST be the exact spelling requested.
-PERSONAGEM: ${charText}. Posing dynamically interacting with the title text.
+CENA: Movie Poster Layout. ${styleModOrig}
+PERSONAGEM: ${charText}. Posing dynamically interactions with the title text.
 EMOÇÃO: Happy, Excited, Adventurous.`;
             }
 
@@ -189,12 +181,11 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
             const url = await generateImageWithReferences(
                 prompt,
                 references,
-                statuses,
-                storyWithScenes.visualStyle
+                statuses
             );
 
             // Update specific image slot and set as current selected
-            setImages(prev => ({ ...prev, [language]: url }));
+            setImages((prev: any) => ({ ...prev, [language]: url }));
             setImageUrl(url);
 
             // Update state to unlock next steps

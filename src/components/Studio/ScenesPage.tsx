@@ -80,7 +80,7 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
             const characterNames = Object.keys(extractedCharacters);
             const characterDNAs: Record<string, CharacterDNA> = {};
 
-            for (const name of characterNames.slice(0, 3)) { // Limit to 3 main characters
+            for (const name of characterNames.slice(0, 5)) { // Limit to 5 characters to avoid hitting rate limits or taking too long
                 try {
                     // Use new structured extraction function
                     const { extractStructuredCharacterData } = await import('../../services/gemini');
@@ -128,28 +128,15 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
         try {
             console.log(`[ScenesPage] Generating reference image for ${characterName}...`);
 
-            // Build detailed prompt from character DNA with CHILD-FRIENDLY emphasis
-            const characterPrompt = `VISUAL STYLE: ${story.visualStyle}
-${story.visualStyle === 'Estilo 2D Cartoon'
-                    ? '- Premium 2D cartoon illustration. Vibrant colors, soft shading, clean lines. Modern mobile game art style.\n- NO 3D render. Cute, magical storybook look.'
-                    : '- Premium 3D CGI Animation Studio Style Character\n- BIG expressive eyes (35-40% of face)\n- Soft, rounded, cute features'}
-- Adorable, friendly, non-threatening appearance
-- Perfect for children ages 3-8
+            // Build a flat, highly descriptive prompt. STYLE GOES FIRST to avoid truncation.
+            const baseStyle = story.visualStyle === 'Estilo 2D Cartoon'
+                ? '2D cartoon illustration, flat cel shading, clean crisp outlines, vibrant colors, NO 3D, NO CGI, NO photorealism'
+                : '3D CGI Animation Style, BIG expressive eyes, soft rounded features';
 
-CHARACTER DETAILS:
-${character.description}
-Species: ${character.species}
-Colors: ${character.mainColors.join(', ')}
-Clothing: ${character.clothing}
-${character.accessories !== 'Nenhum' ? `Accessories: ${character.accessories}` : ''}
+            // Truncate description to prevent it from pushing style instructions out of the prompt
+            const shortDesc = (character.description || '').substring(0, 150);
 
-TECHNICAL:
-- Full body portrait, centered
-- White/neutral background
-- ${story.visualStyle}
-- High quality, detailed
-- Professional character sheet style
-- NO realistic/adult features`;
+            const characterPrompt = `${baseStyle}. A cute character design of ${character.name}, ${character.species}. Colors: ${character.mainColors.join(', ')}. Clothing: ${character.clothing}. ${character.accessories !== 'Nenhum' ? `Accessories: ${character.accessories}.` : ''} ${shortDesc}. Adorable, friendly, full body portrait, centered, white neutral background, high quality, professional character sheet.`;
 
             const { generateImageWithNanoBanana } = await import('../../services/google_image');
             const imageUrl = await generateImageWithNanoBanana(characterPrompt, story.visualStyle);

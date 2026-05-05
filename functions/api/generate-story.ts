@@ -42,14 +42,14 @@ async function generateViaVertexAI(
     body: JSON.stringify(payload)
   });
 
-  const data = await response.json<any>();
+  const data = (await response.json()) as any;
   if (!response.ok) throw new Error(data?.error?.message || "Erro no Vertex AI");
   return data;
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { title, theme, duration, minWords, maxWords, scenes, style, idea, systemInstructions, ageRequirements, toneRequirements } = await request.json<any>();
+    const { title, theme, duration, minWords, maxWords, scenes, style, idea, systemInstructions, ageRequirements, toneRequirements } = (await request.json()) as any;
 
     const prompt = `${systemInstructions || 'Crie uma historia infantil em portugues brasileiro.'}
 
@@ -71,6 +71,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     - A ação: Personagens correndo, pulando, interagindo com objetos, de costas olhando algo gigante, escondidos atrás de algo.
     - O cenário: Mude a iluminação e a perspectiva a cada cena.
     - Evite que todas as imagens sejam "personagem no centro sorrindo para a câmera".
+    - FUNDO/CENÁRIO OBRIGATÓRIO: NUNCA use "fundo branco", "white background", "solid background" ou "plain background" no prompt_imagem. O cenário DEVE estar sempre preenchido com um ambiente detalhado (ex: uma floresta mágica iluminada, o interior de uma casa aconchegante, um campo florido sob o sol).
 
     Retorne a história JSON ESTRITAMENTE com a seguinte estrutura:
     {

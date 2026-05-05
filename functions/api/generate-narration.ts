@@ -103,7 +103,7 @@ async function generateViaVertexAI(
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json<any>();
+    const data = (await response.json()) as any;
 
     if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
       const audioBase64 = data.candidates[0].content.parts[0].inlineData.data;
@@ -120,7 +120,7 @@ async function generateViaVertexAI(
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { text, voice, styleInstruction, temperature } = await request.json<any>();
+    const { text, voice, styleInstruction, temperature } = (await request.json()) as any;
 
     if (!text) {
       return Response.json({ error: 'O campo "text" é obrigatório' }, { status: 400 });

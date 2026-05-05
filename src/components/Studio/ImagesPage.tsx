@@ -14,6 +14,7 @@ import JSZip from 'jszip';
 interface ImagesPageProps {
     storyWithScenes: StoryWithScenes;
     onComplete: (updatedStory: StoryWithScenes) => void;
+    onPartialUpdate?: (updatedStory: StoryWithScenes) => void;
     onBack: () => void;
 }
 

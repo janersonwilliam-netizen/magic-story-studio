@@ -15,7 +15,7 @@ interface Env {
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { prompt, aspectRatio = '16:9', referenceImages } = await request.json<any>();
+    const { prompt, aspectRatio = '16:9', referenceImages } = (await request.json()) as any;
 
     if (!prompt) {
       return Response.json({ error: 'Prompt é obrigatório' }, { status: 400 });
@@ -69,7 +69,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json<any>();
+      const data = (await response.json()) as any;
 
       if (!response.ok) {
         console.error('[generate-image] Gemini Flash Image error:', data);
@@ -109,7 +109,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json<any>();
+      const data = (await response.json()) as any;
 
       if (!response.ok) {
         console.error('[generate-image] Gemini Flash Image error:', data);

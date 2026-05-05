@@ -41,7 +41,16 @@ function parseJsonFromResponse(text: string): any {
     const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
     if (start === -1 || end === -1) throw new Error('Nenhum JSON encontrado na resposta');
 
-    return JSON.parse(cleaned.slice(start, end + 1));
+    const jsonString = cleaned.slice(start, end + 1);
+    
+    try {
+        return JSON.parse(jsonString);
+    } catch (e: any) {
+        console.error("Falha ao analisar JSON:", e.message);
+        console.error("String JSON problemática (primeiros/últimos 500 chars):", jsonString.slice(0, 500), "...", jsonString.slice(-500));
+        console.error("Texto bruto completo do Gemini:", text);
+        throw new Error(`Erro na formatação JSON do Gemini: ${e.message}`);
+    }
 }
 
 // ── 1. Generate Music Scenes from Lyrics ─────────────────────────────────────
@@ -61,61 +70,40 @@ export async function generateMusicScenes(
         ? 'Premium 2D Cartoon style, vibrant flat colors, expressive characters'
         : 'Premium 3D Animated Movie style, cinematic lighting, depth of field';
 
-    const prompt = `You are a professional music video director. Analyze the song lyrics below and divide them into distinct parts (Verse 1, Pre-Chorus, Chorus, Verse 2, Bridge, Outro, etc.).
+    const prompt = `You are a professional music video director for a children's channel. Analyze the song lyrics below and divide them into short, distinct scenes.
 
 Song Title: "${title}"
 Visual Style: ${styleHint}
 
 RULES:
-1. Identify each UNIQUE lyrical section separately
-2. If a section REPEATS (e.g., Chorus appears 3 times), set isChorus:true for ALL of them and set chorusRefIndex to the index of the FIRST occurrence for repeated ones (null for the first one)
-3. Generate a cinematic visualDescription ONLY for unique sections (sections where chorusRefIndex is null)
-4. For repeated sections (chorusRefIndex is not null), leave visualDescription as an empty string ""
-5. The visualDescription must describe a vivid, single static image for image generation — no text overlays, no collages
-6. Use style: ${styleHint}
+1. Break down the lyrics into VERY SHORT segments. Each segment should represent at most ~4 to 5 seconds of singing (usually just 1 or 2 lines of lyrics).
+2. If a section like a Verse or Chorus is long, split it into smaller parts (e.g., "Verse 1A", "Verse 1B", "Chorus A", "Chorus B").
+3. Identify each UNIQUE lyrical section separately.
+4. If a section REPEATS exactly (e.g., the exact same lines of the Chorus), set isChorus:true for ALL of them and set chorusRefIndex to the index of the FIRST occurrence for the repeated ones (null for the first one).
+5. Generate a cinematic visualDescription ONLY for unique sections (where chorusRefIndex is null).
+6. For repeated sections (chorusRefIndex is not null), leave visualDescription as an empty string "".
+7. The visualDescription must describe a vivid, single static image for image generation — no text overlays, no collages. Make it appealing for children.
+8. Use style: ${styleHint}
+9. IMPORTANT: Make sure your JSON is valid. Escape any quotes inside strings. Do NOT output unescaped line breaks.
 
 LYRICS:
 ${lyrics}
 
-Return ONLY valid JSON in this exact format, no markdown, no explanation:
+Return ONLY a valid JSON object matching exactly this structure (no markdown, no explanation):
 {
   "scenes": [
     {
-      "index": 0,
-      "part": "Verse 1",
-      "lyrics": "exact lyrics of this section",
-      "isChorus": false,
-      "chorusRefIndex": null,
-      "visualDescription": "cinematic description of the scene..."
-    },
-    {
-      "index": 1,
-      "part": "Chorus",
-      "lyrics": "exact lyrics of the chorus",
-      "isChorus": true,
-      "chorusRefIndex": null,
-      "visualDescription": "cinematic description..."
-    },
-    {
-      "index": 2,
-      "part": "Verse 2",
-      "lyrics": "...",
-      "isChorus": false,
-      "chorusRefIndex": null,
-      "visualDescription": "cinematic description..."
-    },
-    {
-      "index": 3,
-      "part": "Chorus",
-      "lyrics": "same chorus lyrics",
-      "isChorus": true,
-      "chorusRefIndex": 1,
-      "visualDescription": ""
+      "index": number,
+      "part": "string",
+      "lyrics": "string",
+      "isChorus": boolean,
+      "chorusRefIndex": number | null,
+      "visualDescription": "string"
     }
   ]
 }`;
 
-    const rawText = await callVertexText(prompt, { temperature: 0.6, maxOutputTokens: 8192 });
+    const rawText = await callVertexText(prompt, { temperature: 0.6, maxOutputTokens: 8192, jsonMode: true });
     const parsed = parseJsonFromResponse(rawText);
 
     if (!parsed.scenes || !Array.isArray(parsed.scenes)) {
@@ -147,16 +135,31 @@ export async function generateMusicCharacters(
 ): Promise<MusicCharacter[]> {
     console.log('[MusicClip] Generating characters from lyrics...');
 
-    const styleHint = visualStyle === 'Estilo 2D Cartoon'
-        ? '2D Cartoon, flat colors, expressive'
-        : '3D Animated Movie Pixar style';
+    const is3D = visualStyle === 'Estilo Pixar 3D';
+    
+    const styleHint = is3D
+        ? '3D Animated Movie Pixar style'
+        : '2D Cartoon, flat colors, expressive';
 
-    const prompt = `You are a character designer for music videos. Analyze the song lyrics below and identify the main characters, entities, or subjects that appear or are described.
+    const formatInstructions = is3D 
+        ? "Format the description exactly like this: 'a [species/gender/age] with [natural skin tone], [clothing description], huge expressive eyes with [iris color], wearing [fixed accessory] and carrying [affective item].'"
+        : "Format the description exactly like this: 'a [species/gender/age] with [natural skin tone], [clothing description], clean lines, expressive [eye color] eyes, wearing [key accessory].'";
+
+    const prompt = `You are a character designer for a children's music video channel. Analyze the song lyrics below and identify the main characters, entities, or subjects that appear or are described.
 
 Song Title: "${title}"
 Visual Style: ${styleHint}
 
-For each character, create a detailed visual description suitable for AI image generation. Be very specific about: appearance, clothing, colors, age/type, distinctive features.
+CRITICAL RULES FOR CHARACTER DESIGN:
+1. All characters MUST be designed in a high-quality, friendly, modern 3D animated movie style (like Pixar/Disney).
+2. HUMANS MUST HAVE NATURAL HUMAN SKIN TONES (e.g., light skin, olive skin, brown skin, dark skin). DO NOT give humans blue, green, or unnatural skin colors.
+3. Characters can be adults, but they must be stylized, appealing, and friendly. DO NOT make them look like literal babies or toddlers unless the song specifies a baby.
+4. DO NOT use words like "wrinkled", "rough", "weather-beaten", "scary", or "ugly". Keep their features smooth, expressive, and appealing.
+5. Animals or creatures (like a Big Fish) should be cute, expressive, and friendly.
+
+For each character, create a visual description specifically tailored for the image generation model. 
+${formatInstructions}
+Do not use generic descriptions. Be very specific about clothing and items.
 
 LYRICS:
 ${lyrics}
@@ -166,7 +169,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   "characters": [
     {
       "name": "Character Name",
-      "description": "Very detailed visual description for image generation. Include species/type, clothing colors, hair/fur color, accessories, distinctive features. Style: ${styleHint}."
+      "description": "The exact formatted description as requested."
     }
   ]
 }
@@ -229,22 +232,33 @@ Return ONLY the animation prompt text, nothing else, no quotes, no explanation.`
 export async function generateMusicCoverPrompt(
     title: string,
     artist: string,
+    lyrics: string,
     characters: MusicCharacter[],
     visualStyle: VisualStyle
 ): Promise<string> {
-    const styleHint = visualStyle === 'Estilo 2D Cartoon'
-        ? 'Premium 2D Cartoon style, vibrant flat colors, bold typography'
-        : 'Premium 3D Animated Movie style, cinematic lighting, glossy 3D letters';
-
-    const charDescriptions = characters.slice(0, 2).map(c => c.description).join(' and ');
-
     const titleWords = title.split(' ');
     const spelledWords = titleWords.map(w => `"${w}" (${w.toUpperCase().split('').join('-')})`).join(', ');
 
-    return `SONG TITLE: ${title}
-SCENE: Professional Music Video Album Cover. ${styleHint}.
-TITLE TEXT: The song title spelled exactly as ${spelledWords} displayed prominently.
-CHARACTERS: ${charDescriptions || 'Artistic representation fitting the song mood'}.
-STYLE: Vibrant colors, dynamic composition, 16:9 landscape format, professional album art quality.
-IMPORTANT: Only text on the image must be the exact song title. No subtitles, no artist name, no extra text.`;
+    const charDescriptions = characters.slice(0, 2).map(c => `${c.name} (${c.description})`).join(' AND ');
+
+    // Use Gemini to deduce a cinematic background based on the title and lyrics
+    const backgroundPrompt = `Based on the song title "${title}" and lyrics, describe the primary setting or environment in exactly ONE short sentence in English. Make it highly cinematic and descriptive (e.g., 'A stormy ocean with giant waves', 'A bright magical forest', 'A futuristic cyberpunk city at night').\n\nLyrics: ${lyrics.slice(0, 500)}`;
+    
+    let environmentStr = 'Magical cinematic environment';
+    try {
+        environmentStr = await callVertexText(backgroundPrompt, { temperature: 0.7, maxOutputTokens: 60 });
+        environmentStr = environmentStr.replace(/"/g, '').trim();
+    } catch (e) {
+        console.error("Failed to deduce background:", e);
+    }
+
+    const styleModOrig = visualStyle === 'Estilo 2D Cartoon'
+        ? `Premium 2D Cartoon style. The title text spelling exactly ${spelledWords} is displayed in bold, colorful 2D typography. Vibrant colors, magical atmosphere, crisp lines, 16:9 wide shot, NO 3D rendering.`
+        : `Premium 3D Animated Movie style. The title text spelling exactly ${spelledWords} is displayed in BIG, THICK, CHUNKY 3D EXTRUDED LETTERS. Each word a different vibrant color with glossy shine and drop shadows. Cinematic lighting, depth of field, 8k resolution, 16:9 wide shot.`;
+
+    return `TITULO: ${title}
+CENA: Magical Children's Animated Movie Title Card. Background setting: ${environmentStr}. ${styleModOrig}
+INSTRUÇÃO DE TEXTO: DO NOT add any extra text, translations, subtitles, or credits. The ONLY text on the image MUST be the exact spelling requested.
+PERSONAGEM: ${charDescriptions || 'Artistic representation fitting the song mood'}. Posing dynamically interacting with the title text.
+EMOÇÃO: Happy, Excited, Adventurous.`;
 }

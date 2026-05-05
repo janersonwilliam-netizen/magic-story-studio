@@ -6,7 +6,7 @@ interface Env {
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { prompt, aspectRatio = '16:9', duration = '4s', resolution = '720p', referenceImage } = await request.json<any>();
+    const { prompt, aspectRatio = '16:9', duration = '4s', resolution = '720p', referenceImage } = (await request.json()) as any;
 
     if (!prompt) {
       return Response.json({ error: 'Prompt é obrigatório' }, { status: 400 });

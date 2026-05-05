@@ -30,8 +30,16 @@ if (!apiKey) {
  * NOW DYNAMIC - extracts character info from the prompt itself
  */
 async function translateAndCompactPrompt(prompt: string, styleConfig?: string): Promise<string> {
-    // If the prompt is already in English (our new descriptive prompts), skip translation entirely
-    // This preserves Portuguese title text embedded in quotes within English prompts
+    // Helper: builds the mandatory style suffix based on styleConfig
+    function getStyleSuffix(config?: string): string {
+        if (config === 'Estilo 2D Cartoon') {
+            return '. STYLE: Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, magical lighting, warm golden backlight, very vibrant colors, soft colorful shading, crisp clean outlines, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, NO 3D rendering, NO CGI, NO photorealism, widescreen 16:9';
+        }
+        return '. STYLE: 3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9';
+    }
+
+    // If the prompt is already in English (our new descriptive prompts), skip translation
+    // but STILL append style suffix to guarantee consistency
     const isAlreadyEnglish = prompt.match(/^(A |An |The |Children|3D |2D |Cute |Scene|Title)/i) 
         || prompt.match(/Pixar animation style/i)
         || prompt.match(/children book illustration/i)
@@ -39,7 +47,19 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
     
     if (isAlreadyEnglish) {
         console.log('[Translate] Prompt already in English, skipping translation');
-        return prompt.replace(/\s+/g, ' ').trim().substring(0, 800);
+        let result = prompt.replace(/\s+/g, ' ').trim();
+        // Truncate the description part to leave room for the style suffix
+        const suffix = styleConfig ? getStyleSuffix(styleConfig) : '';
+        const maxDescLen = 900 - suffix.length;
+        if (result.length > maxDescLen) {
+            result = result.substring(0, maxDescLen);
+        }
+        // Only append style suffix if it's not already present in the prompt
+        if (styleConfig && !result.includes('NO 3D rendering') && !result.includes('Pixar animation style')) {
+            result += suffix;
+        }
+        console.log('[Translate] Final prompt length:', result.length);
+        return result;
     }
 
     // If the prompt doesn't follow the standard structure, use LLM to translate quickly to English
@@ -55,12 +75,22 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
             });
             const data = await response.json() as any;
             if (data.text) {
-                return data.text.trim().substring(0, 800);
+                let translated = data.text.trim().substring(0, 600);
+                // Always append style suffix after LLM translation
+                if (styleConfig) {
+                    translated += getStyleSuffix(styleConfig);
+                }
+                return translated;
             }
         } catch (e) {
             console.error('LLM Translation failed', e);
         }
-        return prompt.replace(/\s+/g, ' ').trim().substring(0, 800);
+        // Fallback: truncate and add style
+        let fallback = prompt.replace(/\s+/g, ' ').trim().substring(0, 600);
+        if (styleConfig) {
+            fallback += getStyleSuffix(styleConfig);
+        }
+        return fallback;
     }
 
     // Extract key information using regex
@@ -239,9 +269,9 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
 
     // 5. Style suffix (simple descriptive, like the successful lion test)
     if (styleConfig === 'Estilo 2D Cartoon') {
-        optimized += '2D cartoon illustration style, modern children storybook art, vibrant colors, cute, adorable, crisp clean lines, well-proportioned anatomy, correct number of limbs, children book illustration, widescreen 16:9';
+        optimized += 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, magical lighting, warm golden backlight. Very vibrant colors, soft colorful shading, crisp clean outlines. Animated children storybook style, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, NO 3D rendering, NO CGI, widescreen 16:9';
     } else {
-        optimized += '3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs, children book illustration, widescreen 16:9';
+        optimized += '3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9';
     }
 
     // Final cleanup

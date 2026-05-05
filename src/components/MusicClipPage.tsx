@@ -6,6 +6,7 @@ import { VisualStyle } from "../types/studio";
 import { generateMusicScenes, generateMusicCharacters, generateAnimationPrompt, generateMusicCoverPrompt } from "../services/musicClip";
 import { generateImageWithNanoBanana as generateImage, generateImageWithReferences } from "../services/google_image";
 import { generateVideoVertex } from "../services/video_service";
+import { DEFAULT_IMAGE_TEMPLATE_3D, DEFAULT_IMAGE_TEMPLATE_2D } from "../lib/promptDefaults";
 
 const STEPS: { key: MusicStep; label: string }[] = [
   { key: "LYRICS", label: "Letra" },
@@ -126,7 +127,21 @@ function StepCharacters({ project, onChange, onNext }: { project: MusicProject; 
     if (!char) return currentChars;
     setGenImgIndex(idx);
     try {
-      const prompt = `Character reference sheet: ${char.name}. ${char.description}. Full body, front view, plain white background, character design sheet.`;
+      const is3D = project.visualStyle === "Estilo Pixar 3D";
+      const baseTemplate = is3D ? DEFAULT_IMAGE_TEMPLATE_3D : DEFAULT_IMAGE_TEMPLATE_2D;
+      
+      const charDetails = `${char.name}, ${char.description}`;
+      
+      let prompt = baseTemplate;
+      if (is3D) {
+        prompt = prompt.replace('[personagem]', charDetails)
+                       .replace('[emoção desejada, ex: surpresa encantada, alegria radiante ou curiosidade profunda]', 'alegria radiante e simpatia')
+                       .replace('[formato, ex: arredondadas, caídas ou pontudas]', 'normais e proporcionais')
+                       .replace('[ex: floresta ensolarada, jardim encantado, vila mágica ou clareira brilhante]', 'cenário cinematográfico, mágico e detalhado que combina com o personagem');
+      } else {
+        prompt = prompt.replace('[CENA]', 'apresentando o personagem')
+                       .replace('[PERSONAGEM]', charDetails);
+      }
       const url = await generateImage(prompt, project.visualStyle);
       const updated = [...currentChars];
       updated[idx] = { ...char, referenceImageUrl: url };
@@ -178,7 +193,7 @@ function StepCharacters({ project, onChange, onNext }: { project: MusicProject; 
       <div className="space-y-4">
         {project.characters.map((char, idx) => (
           <div key={idx} className="bg-card border border-border rounded-2xl p-5 flex flex-col md:flex-row gap-6">
-            <div className="w-full md:w-48 h-48 flex-shrink-0 rounded-xl overflow-hidden bg-muted flex items-center justify-center relative group shadow-sm">
+            <div className="w-full md:w-64 h-64 flex-shrink-0 rounded-xl overflow-hidden bg-muted flex items-center justify-center relative group shadow-sm">
               {char.referenceImageUrl
                 ? <img src={char.referenceImageUrl} alt={char.name} className="w-full h-full object-cover" />
                 : <Image className="w-8 h-8 text-muted-foreground opacity-30" />}
@@ -210,7 +225,7 @@ function StepCharacters({ project, onChange, onNext }: { project: MusicProject; 
                 <input value={char.name} onChange={e => updateChar(idx, "name", e.target.value)} placeholder="Nome do personagem" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary" />
                 <button onClick={() => removeChar(idx)} className="p-3 bg-muted rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"><Trash2 className="w-5 h-5" /></button>
               </div>
-              <textarea value={char.description} onChange={e => updateChar(idx, "description", e.target.value)} placeholder="Descricao visual detalhada..." className="w-full flex-1 min-h-[100px] px-4 py-3 rounded-xl border border-border bg-background text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary" />
+              <textarea value={char.description} onChange={e => updateChar(idx, "description", e.target.value)} placeholder="Editar descrição visual aqui..." className="w-full flex-1 min-h-[100px] px-4 py-3 rounded-xl border border-dashed border-border hover:border-primary/50 bg-background text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-solid transition-all" />
             </div>
           </div>
         ))}
@@ -236,7 +251,7 @@ function StepCover({ project, onChange, onNext }: { project: MusicProject; onCha
   const handleGenerate = async () => {
     setLoading(true);
     try {
-      const prompt = await generateMusicCoverPrompt(project.title, project.artist || "", project.characters, project.visualStyle);
+      const prompt = await generateMusicCoverPrompt(project.title, project.artist || "", project.lyrics || "", project.characters, project.visualStyle);
       const refs = project.characters.filter(c => c.referenceImageUrl).map(c => c.referenceImageUrl!);
       const statuses = refs.map(() => "protagonist");
       let url: string;

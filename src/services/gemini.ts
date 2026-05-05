@@ -145,9 +145,9 @@ IMPORTANT: Return ONLY the translated title, nothing else. No explanation, no qu
 
 // ── Extração de Personagens ────────────────────────────────────────────────
 export async function extractCharactersFromStory(storyText: string): Promise<Record<string, string>> {
-    const prompt = `Analise a seguinte história infantil e identifique os personagens principais.
+    const prompt = `Analise a seguinte história infantil e identifique TODOS os personagens relevantes (principais e coadjuvantes importantes).
 Para cada personagem, forneça uma descrição visual DETALHADA baseada no texto ou inferindo características apropriadas para a história (ex: tipo de animal, cor, roupas, acessórios).
-Foque APENAS nas características físicas visuais.
+Foque APENAS nas características físicas visuais. Extraia até 5 personagens distintos se existirem na história.
 
 HISTÓRIA:
 ${storyText}
@@ -380,13 +380,13 @@ export async function generateImagePrompt(params: GenerateImagePromptParams): Pr
     // Style
     const is2D = params.visual_style === 'Estilo 2D Cartoon';
     const styleStr = is2D
-        ? '2D cartoon illustration style, modern children storybook art, crisp clean lines, vibrant colors, well-proportioned anatomy, correct number of limbs'
+        ? 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, magical lighting, warm golden backlight, soft colorful shading, very vibrant colors, crisp clean outlines, animated children storybook style, NO 3D rendering, NO CGI, well-proportioned anatomy, correct number of limbs'
         : '3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs';
 
     // Emotion
     const emotionStr = params.emotion ? `, ${params.emotion} mood` : '';
 
-    return `${parts.join(', ')}, ${styleStr}${emotionStr}, children book illustration, widescreen 16:9`;
+    return `${parts.join(', ')}, ${styleStr}${emotionStr}, fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9`;
 }
 
 export interface GenerateCharacterDescriptionsParams {
