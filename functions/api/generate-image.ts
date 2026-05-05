@@ -84,6 +84,37 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       }
 
       console.error('[generate-image] Nenhuma imagem retornada (com refs):', JSON.stringify(data).substring(0, 500));
+
+      // Check if it's a safety/copyright block — retry WITHOUT reference images
+      const finishReason = data.candidates?.[0]?.finishReason;
+      if (finishReason === 'IMAGE_PROHIBITED_CONTENT' || finishReason === 'SAFETY') {
+        console.warn('[generate-image] Safety block with refs detected, retrying WITHOUT references...');
+        const safePayload = {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generation_config: {
+            response_modalities: ['TEXT', 'IMAGE'],
+            image_config: { aspect_ratio: aspectRatio || '16:9' },
+          },
+        };
+        const safeResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'x-goog-user-project': projectId,
+          },
+          body: JSON.stringify(safePayload),
+        });
+        const safeData = (await safeResponse.json()) as any;
+        const safeParts = safeData.candidates?.[0]?.content?.parts || [];
+        for (const part of safeParts) {
+          if (part.inlineData?.mimeType?.startsWith('image/')) {
+            console.log('[generate-image] Safe fallback succeeded!');
+            return Response.json({ base64: part.inlineData.data, mimeType: part.inlineData.mimeType });
+          }
+        }
+      }
+
       return Response.json({ error: 'Nenhuma imagem gerada pelo modelo (Gemini Safety Filter). Detalhes: ' + JSON.stringify(data).substring(0, 500) }, { status: 500 });
 
     } else {

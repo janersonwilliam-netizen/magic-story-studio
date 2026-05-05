@@ -140,7 +140,7 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
                 // Prompt for MODIFICATION / VARIATION
                 const styleMod = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
                     ? `Premium 2D Cartoon style. The title text is now "${effectiveTitle}" in bold, colorful 2D typography`
-                    : `Disney/Pixar 3D style. The title text is now "${effectiveTitle}" in BIG, BOLD, 3D TYPOGRAPHY`;
+                    : `Animated 3D style. The title text is now "${effectiveTitle}" in BIG, BOLD, 3D TYPOGRAPHY`;
 
                 prompt = `TITULO: ${effectiveTitle}
 CENA: Movie Poster Layout. ${styleMod} at the top or center.
@@ -149,14 +149,14 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
 
             } else {
                 // Standard Prompt for Original
-                const { generateImageWithReferences } = await import('../../services/google_image'); // just for type check if needed, mostly logic below
-
+                // Use ONLY visual descriptions (NOT character names) to avoid copyright triggers
                 let charText = '';
                 if (selectedNames.length > 0) {
                     const charDescriptions = selectedNames.map((name: string) => {
                         const charDNA = storyWithScenes.characters[name];
-                        const visualDesc = charDNA?.description || charDNA?.full_description || '';
-                        return `${name} (${visualDesc.slice(0, 150)}...)`;
+                        // Use visual description only — never include the name itself
+                        const visualDesc = charDNA?.description || charDNA?.full_description || `animated ${name.toLowerCase()} character`;
+                        return visualDesc.slice(0, 180);
                     });
                     charText = charDescriptions.length > 1
                         ? `Characters: ${charDescriptions.join(' AND ')}`
@@ -165,11 +165,11 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
 
                 const styleModOrig = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
                     ? `Premium 2D Cartoon style. The title text "${effectiveTitle}" is displayed in bold, colorful 2D typography (like a modern mobile game logo) at the top or center. Vibrant colors, magical atmosphere, crisp lines, 16:9 wide shot, NO 3D rendering.`
-                    : `Disney/Pixar 3D style. The title text "${effectiveTitle}" is displayed in BIG, BOLD, 3D TYPOGRAPHY (like a movie logo) at the top or center. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.`;
+                    : `Animated 3D children movie style. The title text "${effectiveTitle}" is displayed in BIG, BOLD, 3D TYPOGRAPHY (like a movie logo) at the top or center. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.`;
 
                 prompt = `TITULO: ${effectiveTitle}
 CENA: Movie Poster Layout. ${styleModOrig}
-PERSONAGEM: ${charText}. Posing dynamically interactions with the title text.
+PERSONAGEM: ${charText}. Posing dynamically interacting with the title text.
 EMOÇÃO: Happy, Excited, Adventurous.`;
             }
 
