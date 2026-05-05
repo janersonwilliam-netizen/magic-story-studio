@@ -124,7 +124,7 @@ const supabaseStoryStorage = {
             .from('stories')
             .select('*')
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
         if (error) return undefined;
         if (!data) return undefined;

@@ -33,8 +33,11 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
         return [];
     });
 
-    // Find the Intro Scene (usually scene 0/1)
-    const introSceneIndex = storyWithScenes.scenes.findIndex((s: Scene) => s.visualDescription.includes('TITLE CARD'));
+    // Find the Intro Scene - prefer TITLE CARD, otherwise use first scene
+    const introSceneIndex = Math.max(
+        0,
+        storyWithScenes.scenes.findIndex((s: Scene) => s.visualDescription.includes('TITLE CARD'))
+    );
     const introScene = storyWithScenes.scenes[introSceneIndex];
 
     const toggleCharacter = (name: string) => {
@@ -202,28 +205,19 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
     };
 
     const handleConfirm = () => {
-        if (imageUrl && introScene) {
-            // Update the scene in the story object
-            const updatedScenes = [...storyWithScenes.scenes];
-            updatedScenes[introSceneIndex] = {
-                ...introScene,
-                imageUrl: imageUrl,
-                // Update characters list for this scene to match selection
-                characters: selectedCharacters.length > 0 ? selectedCharacters : introScene.characters
-            };
-
+        if (imageUrl) {
             onComplete({
                 ...storyWithScenes,
                 thumbnailUrl: imageUrl,
-                scenes: updatedScenes
+                // Do NOT modify scenes here — thumbnail is separate from scene images
             });
         }
     };
 
-    if (!introScene) {
+    if (!storyWithScenes.scenes || storyWithScenes.scenes.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center p-12 text-center">
-                <p className="text-xl text-gray-600 mb-4">Cena de introdução não encontrada.</p>
+                <p className="text-xl text-gray-600 mb-4">Nenhuma cena encontrada. Volte e gere as cenas primeiro.</p>
                 <button onClick={onBack} className="px-4 py-2 bg-gray-200 rounded-lg">Voltar</button>
             </div>
         );
