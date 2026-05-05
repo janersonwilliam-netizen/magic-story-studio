@@ -237,8 +237,7 @@ export interface GenerateScenesResponse {
 export async function generateScenesWithGemini(
     params: GenerateScenesParams
 ): Promise<GenerateScenesResponse> {
-    const hasIntroOutro = !!params.title && !!params.targetSceneCount;
-    const storySceneCount = hasIntroOutro && params.targetSceneCount ? params.targetSceneCount : undefined;
+    const storySceneCount = params.targetSceneCount ? params.targetSceneCount : undefined;
 
     let minScenes = 6;
     let maxScenes = 8;
@@ -255,7 +254,7 @@ export async function generateScenesWithGemini(
     }
 
     const totalSeconds = params.duration * 60;
-    const storySeconds = hasIntroOutro ? totalSeconds - 20 : totalSeconds;
+    const storySeconds = totalSeconds;
     const targetAvgDuration = Math.round(storySeconds / ((minScenes + maxScenes) / 2));
 
     const prompt = `Você é um especialista em roteirização de vídeos infantis para YouTube.
@@ -319,29 +318,7 @@ FORMATO DE SAÍDA:
         }
     }
     let finalScenes: Scene[] = data.scenes || [];
-
-    if (hasIntroOutro) {
-        const introScene: Scene = {
-            order: 0,
-            narration_text: `Hoje eu vou contar uma historinha super doce e cheia de aventura! É a história "${params.title}"!`,
-            visual_description: `TITLE CARD: "${params.title}". Movie Poster Layout.`,
-            emotion: 'alegre',
-            duration_estimate: 6,
-            characters: ['__PROTAGONIST__'],
-            image_prompt: `Movie Poster for "${params.title}".`,
-        };
-        const outroScene: Scene = {
-            order: 0,
-            narration_text: `Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Tchau, tchau!`,
-            visual_description: `Vibrant ending card asking to Subscribe and Like.`,
-            emotion: 'alegre',
-            duration_estimate: 8,
-            characters: [],
-            image_prompt: 'ENDING_CARD_PLACEHOLDER',
-        };
-        finalScenes = [introScene, ...finalScenes, outroScene];
-        finalScenes = finalScenes.map((scene, idx) => ({ ...scene, order: idx + 1 }));
-    }
+    finalScenes = finalScenes.map((scene, idx) => ({ ...scene, order: idx + 1 }));
 
     return { scenes: finalScenes };
 }
