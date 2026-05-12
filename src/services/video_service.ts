@@ -42,7 +42,7 @@ export async function generateVideoVertex(params: VideoGenerateParams): Promise<
         body: JSON.stringify(payload)
     });
 
-    let initData;
+    let initData: any;
     const textData = await initResponse.text();
     try {
         initData = JSON.parse(textData);
@@ -79,7 +79,7 @@ export async function generateVideoVertex(params: VideoGenerateParams): Promise<
         
         console.log(`[Video Service] Verificando status (${retries + 1}/${MAX_RETRIES})...`);
         const statusResponse = await fetch(`/api/check-video?operationName=${encodeURIComponent(operationName)}`);
-        const statusData = await statusResponse.json();
+        const statusData = await statusResponse.json() as any;
 
         if (!statusResponse.ok) {
             console.error('[Video Service] Erro no polling:', statusData);

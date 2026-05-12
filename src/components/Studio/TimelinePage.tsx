@@ -371,7 +371,7 @@ export function TimelinePage({ storyWithScenes, onComplete, onBack }: TimelinePa
 
         setLoading(true);
         try {
-            const fileList = Array.from(files);
+            const fileList = Array.from(files) as File[];
             for (const file of fileList) {
                 const reader = new FileReader();
                 await new Promise<void>((resolve) => {

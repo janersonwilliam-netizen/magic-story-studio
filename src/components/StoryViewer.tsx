@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Sparkles, Loader2, Save, Check, Film, Download, PackageCheck, Users, Headphones, Volume2, Trash2, Video } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -12,6 +12,7 @@ import JSZip from 'jszip';
 import { Timeline } from './Studio/Timeline';
 import { VideoPreview } from './Studio/VideoPreview';
 import { ExportVideoModal } from './ExportVideoModal';
+import type { TimelineClip } from '../types/studio';
 
 interface StoryViewerProps {
     storyId: string;
@@ -28,9 +29,9 @@ interface Story {
     narration_text: string | null;
     status: string;
     narrative_text?: string; // some databases might use this
-    status: string;
     full_audio_url?: string;
     custom_instructions: string | null;
+    theme?: string | null;
 }
 
 export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
@@ -56,6 +57,59 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
     const [generatingCharacterSheets, setGeneratingCharacterSheets] = useState(false);
     const [characterSheetTemplate, setCharacterSheetTemplate] = useState<string>('');
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [timelineTime, setTimelineTime] = useState(0);
+
+    const timelineClips = useMemo<TimelineClip[]>(() => {
+        let cursor = 0;
+        return scenes.flatMap((scene, index) => {
+            const duration = scene.duration_estimate || 10;
+            const startTime = cursor;
+            cursor += duration;
+
+            const clips: TimelineClip[] = [
+                {
+                    id: `${scene.id || index}-media`,
+                    type: 'video',
+                    startTime,
+                    duration,
+                    sceneId: scene.id,
+                    imageUrl: scene.imageUrl,
+                    track: 1,
+                    trackId: 'media-1',
+                    name: `Cena ${index + 1}`,
+                },
+                {
+                    id: `${scene.id || index}-caption`,
+                    type: 'caption',
+                    startTime,
+                    duration,
+                    sceneId: scene.id,
+                    text: scene.narration_text,
+                    track: 0,
+                    trackId: 'caption-0',
+                    name: `Legenda ${index + 1}`,
+                },
+            ];
+
+            if (scene.audioUrl) {
+                clips.push({
+                    id: `${scene.id || index}-audio`,
+                    type: 'audio',
+                    startTime,
+                    duration,
+                    sceneId: scene.id,
+                    audioUrl: scene.audioUrl,
+                    track: 2,
+                    trackId: 'audio-2',
+                    name: `Audio ${index + 1}`,
+                });
+            }
+
+            return clips;
+        });
+    }, [scenes]);
+
+    const timelineDuration = timelineClips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0);
 
     // Step navigation helpers
     const stepTitles = [
@@ -228,6 +282,7 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                 title: story.title,
                 age_group: story.age_group,
                 tone: story.tone,
+                theme: story.theme || 'classica',
                 duration: story.duration,
             });
 
@@ -802,9 +857,17 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
                         <VideoPreview scenes={scenes} />
                         <Timeline
-                            scenes={scenes}
-                            onReorder={handleReorderScenes}
-                            onUpdateDuration={handleUpdateSceneDuration}
+                            clips={timelineClips}
+                            currentTime={timelineTime}
+                            totalDuration={timelineDuration}
+                            onTimeUpdate={setTimelineTime}
+                            onClipsChange={(updatedClips) => {
+                                const updatedScenes = scenes.map(scene => {
+                                    const clip = updatedClips.find(item => item.sceneId === scene.id && item.type === 'video');
+                                    return clip ? { ...scene, duration_estimate: clip.duration } : scene;
+                                });
+                                void handleReorderScenes(updatedScenes);
+                            }}
                         />
                     </motion.div>
                 )}

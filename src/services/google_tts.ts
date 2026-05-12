@@ -43,12 +43,12 @@ export async function generateGoogleCloudAudio(params: GoogleTTSParams): Promise
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
+            const errorData = await response.json() as any;
             console.error('[Google TTS] API Error:', errorData);
             throw new Error(`Google Cloud TTS Error: ${errorData.error?.message || response.statusText}`);
         }
 
-        const data = await response.json();
+        const data = await response.json() as any;
 
         if (!data.audioContent) {
             throw new Error('No audio content returned from Google Cloud TTS');

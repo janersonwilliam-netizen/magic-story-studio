@@ -5,6 +5,8 @@
  * Usa estritamente o Vertex AI (créditos GCP) para geração de áudio.
  */
 
+import { getVertexToken } from '../_shared/vertexAuth';
+
 interface Env {
   GCP_PROJECT_ID: string;
   GCP_CREDENTIALS_JSON: string;
@@ -12,7 +14,7 @@ interface Env {
 }
 
 // Modelos TTS disponíveis (em ordem de preferência)
-const TTS_MODELS = ['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'] as const;
+const TTS_MODELS = ['gemini-2.5-flash-tts', 'gemini-2.5-pro-tts', 'gemini-2.5-flash-lite-preview-tts'] as const;
 
 /**
  * Detecta se GCP_CREDENTIALS_JSON tem credenciais válidas (Service Account ou Authorized User)
@@ -84,13 +86,13 @@ async function generateViaVertexAI(
   payload: object,
   env: Env
 ): Promise<string | null> {
-  const { getVertexToken } = await import('../_shared/vertexAuth');
   const token = await getVertexToken(env as any);
   const projectId = env.GCP_PROJECT_ID;
   const region = env.GCP_REGION_TTS || 'us-central1';
 
   for (const model of TTS_MODELS) {
-    const url = `https://${region}-aiplatform.googleapis.com/v1beta1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
+    const host = region === 'global' ? 'aiplatform.googleapis.com' : `${region}-aiplatform.googleapis.com`;
+    const url = `https://${host}/v1beta1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
     console.log(`[generate-narration] Vertex AI — tentando modelo: ${model}`);
 
     const response = await fetch(url, {
@@ -104,15 +106,16 @@ async function generateViaVertexAI(
     });
 
     const data = (await response.json()) as any;
+    const audioPart = data.candidates?.[0]?.content?.parts?.find((part: any) => part.inlineData?.data);
 
-    if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
-      const audioBase64 = data.candidates[0].content.parts[0].inlineData.data;
+    if (response.ok && audioPart?.inlineData?.data) {
+      const audioBase64 = audioPart.inlineData.data;
       const wavBytes = addWavHeaders(audioBase64, 24000);
       console.log(`[generate-narration] Vertex AI — sucesso com modelo: ${model}`);
       return wavToBase64(wavBytes);
     }
 
-    console.warn(`[generate-narration] Vertex AI — ${model} falhou:`, JSON.stringify(data).slice(0, 300));
+    console.warn(`[generate-narration] Vertex AI — ${model} falhou (${response.status}):`, JSON.stringify(data).slice(0, 500));
   }
 
   return null;
@@ -130,13 +133,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     const payload = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
+      generation_config: {
         temperature: temperature ?? 1.0,
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          languageCode: 'pt-BR',
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: voice || 'Kore' },
+        response_modalities: ['AUDIO'],
+        speech_config: {
+          language_code: 'pt-BR',
+          voice_config: {
+            prebuilt_voice_config: { voice_name: voice || 'Kore' },
           },
         },
       },

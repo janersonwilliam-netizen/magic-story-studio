@@ -85,7 +85,7 @@ export async function generateImageVertex(params: VertexGenerateParams): Promise
                 throw err;
             }
 
-            const data = await response.json();
+            const data = await response.json() as any;
 
             // Handle different possible response formats from the proxy
             const imageUrl = data.url || data.imageUrl || data.image_url || data.data?.[0]?.url;

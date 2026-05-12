@@ -56,11 +56,11 @@ export const searchVideos = async ({
         const searchResponse = await fetch(searchUrl);
 
         if (!searchResponse.ok) {
-            const errorData = await searchResponse.json();
+            const errorData = await searchResponse.json() as any;
             throw new Error(errorData.error?.message || 'Falha ao buscar vídeos');
         }
 
-        const searchData = await searchResponse.json();
+        const searchData = await searchResponse.json() as any;
 
         if (!searchData.items || searchData.items.length === 0) {
             return [];
@@ -71,7 +71,7 @@ export const searchVideos = async ({
         const statsUrl = `${BASE_URL}/videos?part=statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
 
         const statsResponse = await fetch(statsUrl);
-        const statsData = await statsResponse.json();
+        const statsData = await statsResponse.json() as any;
 
         // Create a map of video statistics and details
         const detailsMap = new Map();

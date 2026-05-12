@@ -41,17 +41,7 @@ const DEFAULT_TRACK_CONFIG: TimelineTrack[] = [
     { id: 'audio-2', type: 'audio', label: 'Áudio' },
 ];
 
-// Draggable Clip Component
-function DraggableClip({
-    clip,
-    pixelsPerSecond,
-    isSelected,
-    onSelect,
-    onResizeRight,
-    onResizeLeft,
-    onDelete,
-    onReplaceContent,
-}: {
+interface DraggableClipProps {
     clip: TimelineClip;
     pixelsPerSecond: number;
     isSelected: boolean;
@@ -60,7 +50,19 @@ function DraggableClip({
     onResizeLeft?: (clipId: string, newStartTime: number, newDuration: number) => void;
     onDelete?: () => void;
     onReplaceContent?: (clipId: string, newData: any) => void;
-}) {
+}
+
+// Draggable Clip Component
+const DraggableClip: React.FC<DraggableClipProps> = ({
+    clip,
+    pixelsPerSecond,
+    isSelected,
+    onSelect,
+    onResizeRight,
+    onResizeLeft,
+    onDelete,
+    onReplaceContent,
+}) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: clip.id,
         data: clip
@@ -281,7 +283,7 @@ function DraggableClip({
             )}
         </div>
     );
-}
+};
 
 // Playhead Component
 function Playhead({
