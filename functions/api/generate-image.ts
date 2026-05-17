@@ -3,7 +3,7 @@
  * Rota: POST /api/generate-image
  *
  * Body: { prompt, aspectRatio?, referenceImages?: string[] }
- * Ambos os caminhos agora usam Gemini 2.5 Flash Image, conforme solicitado.
+ * Ambos os caminhos usam Gemini 3.1 Flash Image via Vertex AI.
  */
 
 import { getVertexToken } from '../_shared/vertexAuth';
@@ -30,10 +30,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     const hasRefs = Array.isArray(referenceImages) && referenceImages.length > 0;
 
-    // Usaremos o Gemini 2.5 Flash Image para os dois cenários
-    const model = 'gemini-2.5-flash-image';
-    const region = 'us-central1';
-    const url = `https://${region}-aiplatform.googleapis.com/v1beta1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
+    // Usaremos o Gemini 3.1 Flash Image para os dois cenários
+    const model = 'gemini-3.1-flash-image-preview';
+    const region = 'global';
+    const host = region === 'global' ? 'aiplatform.googleapis.com' : `${region}-aiplatform.googleapis.com`;
+    const url = `https://${host}/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
 
     if (hasRefs) {
       console.log(`[generate-image] Gerando com ${referenceImages.length} referências via Gemini (${model})`);
@@ -51,10 +52,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       const payload = {
         contents: [{ role: 'user', parts }],
-        generation_config: {
-          response_modalities: ['TEXT', 'IMAGE'],
-          image_config: {
-            aspect_ratio: aspectRatio || '16:9',
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: {
+            aspectRatio: aspectRatio || '16:9',
           },
         },
       };
@@ -91,9 +92,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         console.warn('[generate-image] Safety block with refs detected, retrying WITHOUT references...');
         const safePayload = {
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generation_config: {
-            response_modalities: ['TEXT', 'IMAGE'],
-            image_config: { aspect_ratio: aspectRatio || '16:9' },
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+            imageConfig: { aspectRatio: aspectRatio || '16:9' },
           },
         };
         const safeResponse = await fetch(url, {
@@ -122,10 +123,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       const payload = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generation_config: {
-          response_modalities: ['TEXT', 'IMAGE'],
-          image_config: {
-            aspect_ratio: aspectRatio || '16:9',
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: {
+            aspectRatio: aspectRatio || '16:9',
           },
         },
       };

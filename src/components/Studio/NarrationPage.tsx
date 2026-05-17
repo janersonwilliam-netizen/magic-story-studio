@@ -73,6 +73,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                 tone: config.tone || 'aventura',
                 theme: config.theme || 'classica',
                 duration: config.duration,
+                sceneCount: config.sceneCount,
                 storyIdea: config.storyIdea,
                 customSystemInstructions: customInstructions
             });

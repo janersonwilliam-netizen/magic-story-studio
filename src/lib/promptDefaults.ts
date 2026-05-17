@@ -10,7 +10,7 @@ Introdução: Abertura com gancho convidativo
 Desenvolvimento: Conflito leve e educativo
 Conclusão: Resolução positiva com lição educativa
 
-Encerramento: "Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho!"`;
+Encerramento: finalize dentro da própria narrativa, com a resolução da aventura e uma mensagem positiva. Não inclua pedido de curtida, inscrição, sininho, créditos, tela final ou chamada para o canal.`;
 
 export const DEFAULT_INSTRUCTIONS_BIBLICA = `📚 Instruções para o Comportamento do GPT:
 Você é um criador de histórias infantis bíblicas narrativas.
@@ -39,33 +39,36 @@ O foco deve estar na atitude de fé e na ação de Deus, não no problema em si.
 
 Conclusão
 Mostre como Deus cuidou da situação e como o personagem aprendeu algo importante.
-Finalize com uma lição clara e prática para a criança, como:
+Finalize dentro da própria narrativa, com uma lição clara e prática para a criança, como:
 - Confiar em Deus quando sentir medo
 - Ser obediente mesmo quando é difícil
 - Acreditar que Deus sempre cuida de nós
 
-Encerramento
-Aqui na Bússola de Davi, nossa direção é sempre o coração de Deus! Inscreva-se no canal para aprender cada vez mais sobre os ensinamentos da Bíblia e crescer na fé com a gente.`;
+Não inclua pedido de curtida, inscrição, sininho, créditos, tela final ou chamada para o canal.`;
 
-export const DEFAULT_IMAGE_TEMPLATE_3D = `Crie um [personagem] com aparência extremamente fofa e expressiva, no estilo de animação 3D Pixar / DreamWorks. O personagem deve ter olhos grandes e brilhantes, repletos de [emoção desejada, ex: surpresa encantada, alegria radiante ou curiosidade profunda], com blush suave nas bochechas, orelhas [formato, ex: arredondadas, caídas ou pontudas], e uma textura realista com acabamento suave que ressalta sua personalidade cativante. Os traços devem transmitir ternura e carisma à primeira vista.
-IMPORTANTE: O personagem deve ocupar cerca de 10% da largura da imagem, posicionado de forma centralizada ou levemente deslocado, para que o cenário ao redor seja amplamente visível e contribua com a atmosfera mágica da composição.
-O fundo deve retratar um cenário rico em cor e profundidade, como uma [ex: floresta ensolarada, jardim encantado, vila mágica ou clareira brilhante], com árvores detalhadas, flores vibrantes, folhas dançantes ao vento, pequenos animais ao fundo ou trilhas sinuosas. Adicione elementos que tragam dinamismo e fantasia — como luz filtrando entre as copas das árvores, pétalas flutuando no ar, cogumelos coloridos, borboletas ou passarinhos em movimento — para criar um visual cinematográfico, vibrante e encantador.
-A iluminação deve ser suave e mágica, com um efeito de backlight dourado que contorna o personagem com luz quente, realçando sua silhueta e trazendo uma sensação de manhã ensolarada ou entardecer encantado.
-Estilo ultra-realista cartoon, com riqueza de detalhes e atmosfera envolvente. Referências visuais: Zootopia, Encanto, Como Treinar o Seu Dragão. Composição horizontal. Resolução: 1920x1080 pixels.`;
+export const DEFAULT_IMAGE_TEMPLATE_3D = `PROMPT MESTRE DE IMAGEM 3D - CENAS AUTENTICAS
 
-export const DEFAULT_IMAGE_TEMPLATE_2D = `🎨 PROMPT PADRÃO – HISTÓRIAS BÍBLICAS INFANTIS 2D
+Crie uma imagem em estilo filme infantil 3D premium, com personagem fofo e expressivo, olhos grandes e vivos, materiais macios e acabamento cinematografico. A identidade visual do personagem deve permanecer consistente entre as cenas, mas o fundo, camera, luz, clima, objetos e composicao precisam mudar de acordo com o momento da historia.
 
-Ilustração 2D premium de altíssima qualidade, estilo de arte de jogos mobile modernos (como animações 2D da Disney moderna), rica em detalhes e iluminação mágica. Cores muito vibrantes, sombreamento colorido e suave (soft shading), contornos limpos e nítidos. Estilo livro de histórias infantil animado, visual fofo, encantador e envolvente.
+Regra principal: cada cena deve parecer um frame unico de um filme, nao uma repeticao do mesmo palco. Evite repetir floresta ensolarada, caminho de terra, jardim magico, arvores arredondadas ou backlight dourado quando a narrativa nao pedir. Se a historia continuar no mesmo lugar, mostre outro recorte: interior, toca, oficina, margem do rio, vista aerea, detalhe de objeto, sombra, chuva, noite, campo aberto, janela, ponte, montanha, etc.
 
-Personagem principal com aparência extremamente simpática, roupas limpas e levemente estilizadas, postura natural. Cabelos e roupas com um brilho suave e olhos amigáveis e expressivos.
+Inclua sempre: local especifico, acao clara, angulo de camera, distancia do plano, primeiro plano, fundo, horario/clima, paleta de cores e objetos narrativos. Varie entre wide shot, low angle, high angle, over-the-shoulder, top-down, side view, close-up emocional e ponto de vista do personagem.
 
-Cena mostrando: [CENA] com [PERSONAGEM].
+O personagem nao deve estar sempre centralizado sorrindo para a camera. Ele deve agir, observar, correr, construir, se esconder, descobrir, olhar para outro personagem, interagir com objetos ou ocupar apenas parte da composicao quando o cenario for importante.
 
-Cenário ao fundo rico e vibrante, com elementos mágicos sutis (como pequenos reflexos de luz ou poeira mágica), árvores frondosas com folhas estilizadas, céu azul vibrante. A iluminação deve ter um brilho dourado e acolhedor (warm backlight).
+Estilo: 3D animated children movie, Pixar-quality charm, tactile materials, cinematic storytelling, vibrant but scene-specific colors, fully detailed environment, no plain background, no white background, horizontal 16:9, 1920x1080.`;
 
-Atmosfera alegre, inspiradora e mágica. Arte digital 2D premium, NO 3D rendering, NO CGI realism.
+export const DEFAULT_IMAGE_TEMPLATE_2D = `PROMPT MESTRE DE IMAGEM 2D - CENAS AUTENTICAS
 
-Composição horizontal. Resolução 1920x1080. Proporção 16:9.`;
+Ilustracao 2D premium de altissima qualidade, estilo livro infantil animado e jogos mobile modernos, com contornos limpos, sombreamento suave, cores vivas e leitura clara. Preserve a identidade do personagem, mas trate cada cena como uma ilustracao nova e especifica da historia.
+
+Regra principal: nao repita automaticamente o mesmo jardim, a mesma floresta, o mesmo caminho ou a mesma luz dourada. O cenario precisa nascer do texto da cena. Varie local, camera, luz, clima, paleta, objetos e profundidade visual.
+
+Inclua sempre: acao principal, local especifico, angulo de camera, primeiro plano, fundo, horario/clima, objetos narrativos e expressao emocional. Varie entre plano geral, low angle, high angle, over-the-shoulder, top-down, silhueta, detalhe de objeto e ponto de vista.
+
+O personagem nao deve aparecer sempre centralizado e sorrindo. Ele deve interagir com o mundo: construir, explorar, olhar para algo, conversar, correr, se esconder, descobrir, ajudar ou reagir ao acontecimento da cena.
+
+Estilo: premium 2D cartoon illustration, modern Disney-like storybook feel, crisp outlines, soft colorful shading, vibrant scene-specific palette, fully detailed environment, NO 3D rendering, NO CGI, no white background, no plain background, horizontal 16:9, 1920x1080.`;
 
 export const DEFAULT_CHARACTER_SHEET = `Olá, aqui é o Concept Artist Sênior.
 Para garantir que o personagem [NOME DO PERSONAGEM] mantenha identidade visual consistente em qualquer ângulo, cena ou variação gerada por IA, este design equilibra apelo emocional no estilo Pixar com especificações técnicas rígidas e reproduzíveis.

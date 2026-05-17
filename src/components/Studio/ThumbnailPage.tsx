@@ -6,7 +6,9 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { StoryWithScenes, Scene } from '../../types/studio';
+import { StoryWithScenes } from '../../types/studio';
+import { translateTitle } from '../../services/gemini';
+import { generateImageWithReferences } from '../../services/google_image';
 import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, User } from 'lucide-react';
 
 interface ThumbnailPageProps {
@@ -33,12 +35,16 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
         return [];
     });
 
-    // Find the Intro Scene - prefer TITLE CARD, otherwise use first scene
-    const introSceneIndex = Math.max(
-        0,
-        storyWithScenes.scenes.findIndex((s: Scene) => s.visualDescription.includes('TITLE CARD'))
-    );
-    const introScene = storyWithScenes.scenes[introSceneIndex];
+    // Use the first real story scene as visual inspiration for the separate cover.
+    const introScene = storyWithScenes.scenes[0];
+
+    const buildCoverTypographyBrief = (title: string, languageLabel: string) => {
+        const visualStyle = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
+            ? 'premium 2D cartoon title lettering'
+            : 'premium 3D animated movie title lettering';
+
+        return `TITLE DESIGN: Spell exactly "${title}" in ${languageLabel}. Use one main title only; no subtitles, no second-language translation, no random standalone letters, no misspellings, no watermark. The title must feel like a custom family movie logo, not a generic font: oversized chunky rounded hand-lettered words occupying the top 25-35% of the poster, playful irregular baseline, cinematic bevels, soft shadow, glossy highlights, readable from far away. Make the font identity match this specific story with thematic materials and colors (for example wood/leaves for nature, sky/rivets for flight, candy/eggs for Easter, water/bubbles for ocean, golden storybook details for biblical stories). ${visualStyle}.`;
+    };
 
     const toggleCharacter = (name: string) => {
         setSelectedCharacters((prev: string[]) => {
@@ -86,7 +92,6 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
 
             if (language === 'english') {
                 if (!englishTitle) {
-                    const { translateTitle } = await import('../../services/gemini');
                     const translated = await translateTitle(storyWithScenes.title, 'English');
                     setEnglishTitle(translated);
                     effectiveTitle = translated;
@@ -95,7 +100,6 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
                 }
             } else if (language === 'spanish') {
                 if (!spanishTitle) {
-                    const { translateTitle } = await import('../../services/gemini');
                     const translated = await translateTitle(storyWithScenes.title, 'Spanish');
                     setSpanishTitle(translated);
                     effectiveTitle = translated;
@@ -103,6 +107,11 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
                     effectiveTitle = spanishTitle;
                 }
             }
+
+            const titleBrief = buildCoverTypographyBrief(
+                effectiveTitle,
+                language === 'english' ? 'English' : language === 'spanish' ? 'Spanish' : 'Portuguese'
+            );
 
             // Collect references and statuses
             const references: string[] = [];
@@ -139,12 +148,12 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
             if (language !== 'original') {
                 // Prompt for MODIFICATION / VARIATION
                 const styleMod = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
-                    ? `Premium 2D Cartoon style. The title text is now "${effectiveTitle}" in bold, colorful 2D typography`
-                    : `Animated 3D style. The title text is now "${effectiveTitle}" in BIG, BOLD, 3D TYPOGRAPHY`;
+                    ? `Premium 2D Cartoon style. ${titleBrief}`
+                    : `Animated 3D style. ${titleBrief}`;
 
                 prompt = `TITULO: ${effectiveTitle}
-CENA: Movie Poster Layout. ${styleMod} at the top or center.
-IMPORTANT: KEEP THE VISUAL IDENTICAL to the reference image provided. SAME characters, SAME pose, SAME background. ONLY CHANGE THE TEXT TITLE to "${effectiveTitle}".
+CENA: Movie Poster Layout. ${styleMod}
+IMPORTANT: KEEP THE VISUAL NEARLY IDENTICAL to the reference image provided. SAME characters, SAME pose, SAME background. ONLY CHANGE THE TITLE TEXT to "${effectiveTitle}" and preserve clean readable spelling.
 EMOÇÃO: Happy, Excited, Adventurous.`;
 
             } else {
@@ -164,18 +173,17 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                 }
 
                 const styleModOrig = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
-                    ? `Premium 2D Cartoon style. The title text "${effectiveTitle}" is displayed in bold, colorful 2D typography (like a modern mobile game logo) at the top or center. Vibrant colors, magical atmosphere, crisp lines, 16:9 wide shot, NO 3D rendering.`
-                    : `Animated 3D children movie style. The title text "${effectiveTitle}" is displayed in BIG, BOLD, 3D TYPOGRAPHY (like a movie logo) at the top or center. Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide shot.`;
+                    ? `Premium 2D Cartoon style. ${titleBrief} Vibrant colors, magical atmosphere, crisp lines, 16:9 wide cinematic poster, NO 3D rendering.`
+                    : `Animated 3D children movie style. ${titleBrief} Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide cinematic poster.`;
 
                 prompt = `TITULO: ${effectiveTitle}
 CENA: Movie Poster Layout. ${styleModOrig}
-PERSONAGEM: ${charText}. Posing dynamically interacting with the title text.
+SCENE: A unique poster moment inspired by the story premise: ${introScene.visualDescription}. Avoid a generic empty meadow unless the story requires it.
+PERSONAGEM: ${charText}. Posing dynamically and naturally integrated with the title logo, not standing stiffly under generic text.
 EMOÇÃO: Happy, Excited, Adventurous.`;
             }
 
             console.log(`[ThumbnailPage] Generating with references: ${references.length}`);
-
-            const { generateImageWithReferences } = await import('../../services/google_image');
 
             // If we have references (either chars or original cover), use them
             // If standard generation with no chars, fallback to nano banana inside generateImageWithReferences (it handles empty refs)
@@ -184,7 +192,8 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
             const url = await generateImageWithReferences(
                 prompt,
                 references,
-                statuses
+                statuses,
+                storyWithScenes.visualStyle
             );
 
             // Update specific image slot and set as current selected

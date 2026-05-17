@@ -278,12 +278,21 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
         try {
             setGenerating(true);
             setError('');
+            let targetSceneCount: number | undefined;
+            if (story.custom_instructions) {
+                const match = story.custom_instructions.match(/\[SCENE_COUNT:\s*(\d+)\]/);
+                if (match && match[1]) {
+                    targetSceneCount = parseInt(match[1]);
+                }
+            }
+
             const { story_text, narration_text } = await generateStoryWithGemini({
                 title: story.title,
                 age_group: story.age_group,
                 tone: story.tone,
                 theme: story.theme || 'classica',
                 duration: story.duration,
+                sceneCount: targetSceneCount,
             });
 
             await supabase.from('stories').update({ story_text, narration_text, status: 'draft' }).eq('id', storyId);
@@ -344,6 +353,7 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                     order_number: s.order,
                     narration_text: s.narration_text,
                     visual_description: s.visual_description,
+                    image_prompt: s.image_prompt,
                     emotion: s.emotion,
                     duration_estimate: s.duration_estimate,
                     characters: s.characters
@@ -356,6 +366,7 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                     order: s.order_number,
                     narration_text: s.narration_text,
                     visual_description: s.visual_description || '',
+                    image_prompt: s.image_prompt || '',
                     emotion: s.emotion || 'calma',
                     duration_estimate: s.duration_estimate || 10,
                     characters: s.characters || [],
@@ -379,6 +390,7 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
             await supabase.from('scenes').update({
                 narration_text: updatedScene.narration_text,
                 visual_description: updatedScene.visual_description,
+                image_prompt: updatedScene.image_prompt,
                 emotion: updatedScene.emotion,
                 duration_estimate: updatedScene.duration_estimate,
                 characters: updatedScene.characters

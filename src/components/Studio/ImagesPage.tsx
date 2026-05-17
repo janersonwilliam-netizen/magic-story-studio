@@ -6,8 +6,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { StoryWithScenes } from '../../types/studio';
+import { CharacterDNA, Scene, StoryWithScenes } from '../../types/studio';
 import { generateImagePrompt } from '../../services/gemini';
+import { generateImageWithNanoBanana, generateImageWithReferences } from '../../services/google_image';
 import { Loader2, Check, Image as ImageIcon, AlertCircle, Download, RefreshCw } from 'lucide-react';
 import JSZip from 'jszip';
 
@@ -23,6 +24,109 @@ interface ImageGenerationStatus {
     status: 'pending' | 'generating' | 'complete' | 'error';
     imageUrl?: string;
     error?: string;
+}
+
+const GENERIC_CHARACTER_MARKERS = [
+    '__protagonist__',
+    'protagonista',
+    'personagem principal',
+    'principal',
+    'main character',
+    'hero',
+    'heroi',
+    'herói',
+    'personagem1',
+    'personagem 1',
+    'personagem',
+    'child',
+    'crianca',
+    'criança',
+];
+
+function normalizeLookupText(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function sceneTextIncludesName(sceneText: string, characterName: string): boolean {
+    const normalizedText = normalizeLookupText(sceneText);
+    const normalizedName = normalizeLookupText(characterName);
+    if (!normalizedText || !normalizedName) return false;
+
+    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalizedName)}([^a-z0-9]|$)`, 'i');
+    return pattern.test(normalizedText);
+}
+
+function getPrimaryCharacterName(characters: Record<string, CharacterDNA>): string | null {
+    const allCharacters = Object.values(characters);
+    const protagonist = allCharacters.find(character => character.status === 'protagonist');
+    return protagonist?.name || allCharacters[0]?.name || null;
+}
+
+function resolveOfficialCharacterName(rawName: string, characters: Record<string, CharacterDNA>): string | null {
+    const officialNames = Object.keys(characters);
+    const normalizedRaw = normalizeLookupText(rawName);
+    if (!normalizedRaw) return null;
+
+    if (GENERIC_CHARACTER_MARKERS.some(marker => normalizeLookupText(marker) === normalizedRaw)) {
+        return getPrimaryCharacterName(characters);
+    }
+
+    return officialNames.find(name => normalizeLookupText(name) === normalizedRaw) || null;
+}
+
+function resolveSceneCharacters(scene: Scene, characters: Record<string, CharacterDNA>): string[] {
+    const officialNames = Object.keys(characters);
+    if (officialNames.length === 0) return scene.characters || [];
+
+    const resolved = new Set<string>();
+
+    (scene.characters || []).forEach(characterName => {
+        const officialName = resolveOfficialCharacterName(characterName, characters);
+        if (officialName) resolved.add(officialName);
+    });
+
+    const combinedSceneText = [
+        scene.narrationText,
+        scene.visualDescription,
+        scene.imagePrompt,
+    ].filter(Boolean).join(' ');
+
+    officialNames.forEach(name => {
+        if (sceneTextIncludesName(combinedSceneText, name)) {
+            resolved.add(name);
+        }
+    });
+
+    if (resolved.size === 0) {
+        const primaryName = getPrimaryCharacterName(characters);
+        if (primaryName) resolved.add(primaryName);
+    }
+
+    return Array.from(resolved);
+}
+
+function buildCharacterDescriptionsMap(characters: Record<string, CharacterDNA>): Record<string, string> {
+    const descriptions: Record<string, string> = {};
+    Object.values(characters).forEach(char => {
+        const colorsList = char.mainColors?.length ? char.mainColors.join(', ') : '';
+        const parts = [
+            char.species ? `Species: ${char.species}` : '',
+            colorsList ? `Colors: ${colorsList}` : '',
+            char.clothing ? `Clothing: ${char.clothing}` : '',
+            char.accessories ? `Accessories: ${char.accessories}` : '',
+            char.full_description || char.description || '',
+        ].filter(Boolean);
+        descriptions[char.name] = parts.join('. ');
+    });
+    return descriptions;
 }
 
 export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPageProps) {
@@ -98,119 +202,30 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 console.log(`[ImagesPage] Generating image for scene ${i + 1}/${storyWithScenes.scenes.length}`);
                 console.log(`[ImagesPage] Scene characters:`, scene.characters);
 
-                // --- OPTIMIZATION: SKIP FIRST SCENE (THUMBNAIL) ---
-                if (i === 0 && storyWithScenes.thumbnailUrl) {
-                    console.log('[ImagesPage] OPTIMIZATION: Skipping Scene 1 (Using existing Thumbnail)');
+                const resolvedCharacters = resolveSceneCharacters(scene, storyWithScenes.characters || {});
+                scene.characters = resolvedCharacters;
+                console.log(`[ImagesPage] Resolved scene characters:`, resolvedCharacters);
 
-                    setGenerationStatus(prev => ({
-                        ...prev,
-                        [scene.id]: {
-                            ...prev[scene.id],
-                            status: 'complete',
-                            imageUrl: storyWithScenes.thumbnailUrl
-                        }
-                    }));
+                const characterDescriptionsMap = buildCharacterDescriptionsMap(storyWithScenes.characters || {});
 
-                    scene.imageUrl = storyWithScenes.thumbnailUrl;
-                    scene.imagePrompt = "Existing Thumbnail (Skipped Generation)";
+                const promptSeed = [
+                    scene.visualDescription,
+                    scene.imagePrompt && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
+                        ? `Extra scene-specific direction from storyboard: ${scene.imagePrompt}`
+                        : ''
+                ].filter(Boolean).join('\n');
 
-                    await new Promise(resolve => setTimeout(resolve, 100)); // Brief pause for UI update
-                    continue;
-                }
+                const promptResult = await generateImagePrompt({
+                    visual_description: promptSeed,
+                    emotion: scene.emotion,
+                    characters: resolvedCharacters,
+                    visual_style: storyWithScenes.visualStyle,
+                    characterDescriptions: characterDescriptionsMap,
+                    sceneIndex: i,
+                    totalScenes: storyWithScenes.scenes.length
+                });
 
-                // --- OPTIMIZATION: SKIP LAST SCENE (ENDING CARD) ---
-                // If it's the last scene, force usage of the Ending Card
-                if (i === storyWithScenes.scenes.length - 1) {
-                    console.log('[ImagesPage] OPTIMIZATION: Skipping Last Scene (Using Ending Card)');
-                    try {
-                        const { storage } = await import('../../lib/storage');
-                        const files = await storage.getAllFiles();
-                        const defaultEnding = files.find((f: any) => f.category === 'ending_card' && f.isDefault);
-
-                        if (defaultEnding) {
-                            console.log('[ImagesPage] Using default ending card from library');
-                            setGenerationStatus(prev => ({
-                                ...prev,
-                                [scene.id]: {
-                                    ...prev[scene.id],
-                                    status: 'complete',
-                                    imageUrl: defaultEnding.url
-                                }
-                            }));
-                            scene.imageUrl = defaultEnding.url;
-                            scene.imagePrompt = "Default Ending Card (From Library)";
-                            await new Promise(resolve => setTimeout(resolve, 100));
-                            continue;
-                        }
-                    } catch (err) {
-                        console.error('[ImagesPage] Error reading ending card:', err);
-                    }
-                    // If no card found, let it generate the fallback or proceed normally (optional: forcing a specific prompt here could act as backup)
-                }
-
-                // 1. Optimize Prompt or Use Pre-defined
-                let optimizedPrompt = scene.imagePrompt;
-
-                // Handle Ending Card Special Case
-                if (optimizedPrompt === 'ENDING_CARD_PLACEHOLDER') {
-                    try {
-                        const { storage } = await import('../../lib/storage');
-                        const files = await storage.getAllFiles();
-                        const defaultEnding = files.find((f: any) => f.category === 'ending_card' && f.isDefault);
-
-                        if (defaultEnding) {
-                            console.log('[ImagesPage] Using default ending card from library');
-
-                            setGenerationStatus(prev => ({
-                                ...prev,
-                                [scene.id]: {
-                                    ...prev[scene.id],
-                                    status: 'complete',
-                                    imageUrl: defaultEnding.url
-                                }
-                            }));
-
-                            scene.imageUrl = defaultEnding.url;
-                            scene.imagePrompt = "Default Ending Card (From Library)";
-
-                            // Skip to next scene
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            continue;
-                        }
-                    } catch (err) {
-                        console.error('[ImagesPage] Error reading ending card from library:', err);
-                    }
-
-                    // Fallback if no card found
-                    optimizedPrompt = "Vibrant Youtube Ending Card. Text: 'Inscreva-se'. Pixar Style background, cute characters waving goodbye.";
-                }
-
-                if (!optimizedPrompt) {
-                    const characterDescriptionsMap: Record<string, string> = {};
-                    Object.values(storyWithScenes.characters).forEach(char => {
-                        // Build RICH description from ALL CharacterDNA fields
-                        const colorsList = char.mainColors?.length ? char.mainColors.join(', ') : '';
-                        const parts = [
-                            char.species ? `Species: ${char.species}` : '',
-                            colorsList ? `Colors: ${colorsList}` : '',
-                            char.clothing ? `Clothing: ${char.clothing}` : '',
-                            char.accessories ? `Accessories: ${char.accessories}` : '',
-                            char.full_description || char.description || '',
-                        ].filter(Boolean);
-                        characterDescriptionsMap[char.name] = parts.join('. ');
-                    });
-
-                    const promptResult = await generateImagePrompt({
-                        visual_description: scene.visualDescription,
-                        emotion: scene.emotion,
-                        characters: scene.characters,
-                        visual_style: storyWithScenes.visualStyle,
-                        characterDescriptions: characterDescriptionsMap
-                    });
-
-                    // generateImagePrompt returns a string directly
-                    optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
-                }
+                const optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
 
                 console.log(`[ImagesPage] Using prompt for scene ${scene.order}:`, optimizedPrompt);
 
@@ -218,21 +233,8 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 const sceneReferenceImages: string[] = [];
                 const sceneCharacterStatuses: string[] = [];
 
-                if (scene.characters && scene.characters.length > 0) {
-                    for (const characterName of scene.characters) {
-
-                        // SPECIAL CASE: Handle __PROTAGONIST__ marker for Intro/Outro
-                        if (characterName === '__PROTAGONIST__') {
-                            // Find the first character with a reference image (assumed main character)
-                            const firstCharName = Object.keys(characterReferences)[0];
-                            if (firstCharName && characterReferences[firstCharName]) {
-                                sceneReferenceImages.push(characterReferences[firstCharName]);
-                                sceneCharacterStatuses.push('protagonist');
-                                console.log(`[ImagesPage] Resolved __PROTAGONIST__ to ${firstCharName}`);
-                            }
-                            continue;
-                        }
-
+                if (resolvedCharacters.length > 0) {
+                    for (const characterName of resolvedCharacters) {
                         if (characterReferences[characterName]) {
                             sceneReferenceImages.push(characterReferences[characterName]);
 
@@ -253,7 +255,6 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 // CHECK TEST MODE: If Economy Mode is ON, skip references and use Nano Banana
                 if (sceneReferenceImages.length > 0 && !useEconomyModel) {
                     // Use Gemini 3 Pro with character references AND statuses
-                    const { generateImageWithReferences } = await import('../../services/google_image');
                     imageUrl = await generateImageWithReferences(
                         optimizedPrompt!,
                         sceneReferenceImages,
@@ -263,7 +264,6 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                     console.log(`[ImagesPage] Scene ${i + 1} generated with ${sceneReferenceImages.length} character reference(s)`);
                 } else {
                     // Fallback to standard generation if no references
-                    const { generateImageWithNanoBanana } = await import('../../services/google_image');
                     imageUrl = await generateImageWithNanoBanana(optimizedPrompt!, storyWithScenes.visualStyle);
                     console.log(`[ImagesPage] Scene ${i + 1} generated without references`);
                 }
@@ -296,7 +296,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
             }
 
             // Delay between generations to avoid Vertex AI rate limiting (429)
-            // Increased to 7 seconds for better stability with Gemini 2.5 Flash Image
+            // Increased to 7 seconds for better stability with Gemini Flash Image
             await new Promise(resolve => setTimeout(resolve, 7000));
         }
 
@@ -313,29 +313,28 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
         }));
 
         try {
-            // Create character descriptions map
-            const characterDescriptions: Record<string, string> = {};
-            if (storyWithScenes.characters) {
-                Object.values(storyWithScenes.characters).forEach(char => {
-                    // Build RICH description from ALL CharacterDNA fields
-                    const colorsList = char.mainColors?.length ? char.mainColors.join(', ') : '';
-                    const parts = [
-                        char.species ? `Species: ${char.species}` : '',
-                        colorsList ? `Colors: ${colorsList}` : '',
-                        char.clothing ? `Clothing: ${char.clothing}` : '',
-                        char.accessories ? `Accessories: ${char.accessories}` : '',
-                        char.full_description || char.description || '',
-                    ].filter(Boolean);
-                    characterDescriptions[char.name] = parts.join('. ');
-                });
-            }
+            const resolvedCharacters = resolveSceneCharacters(scene, storyWithScenes.characters || {});
+            scene.characters = resolvedCharacters;
+            console.log(`[ImagesPage] Resolved retry characters:`, resolvedCharacters);
+
+            const characterDescriptions = buildCharacterDescriptionsMap(storyWithScenes.characters || {});
+
+            const sceneIndex = Math.max(0, storyWithScenes.scenes.findIndex(item => item.id === scene.id));
+            const promptSeed = [
+                scene.visualDescription,
+                scene.imagePrompt && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
+                    ? `Extra scene-specific direction from storyboard: ${scene.imagePrompt}`
+                    : ''
+            ].filter(Boolean).join('\n');
 
             const promptResult = await generateImagePrompt({
-                visual_description: scene.visualDescription,
+                visual_description: promptSeed,
                 emotion: scene.emotion,
-                characters: scene.characters,
+                characters: resolvedCharacters,
                 visual_style: storyWithScenes.visualStyle,
-                characterDescriptions
+                characterDescriptions,
+                sceneIndex,
+                totalScenes: storyWithScenes.scenes.length
             });
 
             // generateImagePrompt returns a string directly
@@ -346,8 +345,8 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
             const sceneReferenceImages: string[] = [];
             const sceneCharacterStatuses: string[] = [];
 
-            if (scene.characters && scene.characters.length > 0) {
-                for (const characterName of scene.characters) {
+            if (resolvedCharacters.length > 0) {
+                for (const characterName of resolvedCharacters) {
                     if (characterReferences[characterName]) {
                         sceneReferenceImages.push(characterReferences[characterName]);
                         const characterData = storyWithScenes.characters[characterName];
@@ -360,7 +359,6 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
 
             // CHECK TEST MODE: If Economy Mode is ON, skip references and use Nano Banana
             if (sceneReferenceImages.length > 0 && !useEconomyModel) {
-                const { generateImageWithReferences } = await import('../../services/google_image');
                 imageUrl = await generateImageWithReferences(
                     optimizedPrompt,
                     sceneReferenceImages,
@@ -368,7 +366,6 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                     storyWithScenes.visualStyle
                 );
             } else {
-                const { generateImageWithNanoBanana } = await import('../../services/google_image');
                 imageUrl = await generateImageWithNanoBanana(optimizedPrompt, storyWithScenes.visualStyle);
             }
 

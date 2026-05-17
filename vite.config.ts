@@ -25,6 +25,21 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [react()],
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-router-dom'],
+            animation: ['framer-motion', '@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+            media: ['@ffmpeg/ffmpeg', '@ffmpeg/util', 'jszip'],
+            ai: ['@google/genai', '@google/generative-ai', 'openai'],
+            supabase: ['@supabase/supabase-js'],
+            icons: ['lucide-react'],
+          },
+        },
+      },
+    },
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

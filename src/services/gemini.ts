@@ -11,6 +11,7 @@ export interface GenerateStoryParams {
     tone: string;
     theme: string;
     duration: number;
+    sceneCount?: number;
     storyIdea?: string;
     customSystemInstructions?: string;
 }
@@ -25,27 +26,46 @@ async function callVertexText(
     prompt: string,
     options: { temperature?: number; maxOutputTokens?: number; jsonMode?: boolean } = {}
 ): Promise<string> {
-    let data;
-    try {
-        const response = await fetch('/api/generate-text', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt,
-                temperature: options.temperature ?? 0.7,
-                maxOutputTokens: options.maxOutputTokens ?? 8192,
-                jsonMode: options.jsonMode ?? false,
-            }),
-        });
+    let lastMessage = '';
 
-        data = await response.json() as any;
-        if (!response.ok || data.error) {
-            throw new Error(data.error || `Erro HTTP ${response.status}`);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        let data: any;
+        let response: Response;
+
+        try {
+            response = await fetch('/api/generate-text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt,
+                    temperature: options.temperature ?? 0.7,
+                    maxOutputTokens: options.maxOutputTokens ?? 8192,
+                    jsonMode: options.jsonMode ?? false,
+                }),
+            });
+
+            data = await response.json() as any;
+        } catch (e: any) {
+            throw new Error(`Erro ao comunicar com o servidor: ${e.message}`);
         }
-    } catch (e: any) {
-        throw new Error(`Erro ao comunicar com o servidor: ${e.message}`);
+
+        if (response.ok && !data.error) {
+            return data.text as string;
+        }
+
+        lastMessage = data?.error || `Erro HTTP ${response.status}`;
+
+        if (data?.quotaExhausted && attempt === 0) {
+            const waitSeconds = Math.min(Math.max(Number(data.retryAfterSeconds) || 6, 4), 12);
+            console.warn(`[Gemini] Vertex quota temporarily exhausted. Retrying in ${waitSeconds}s...`);
+            await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+            continue;
+        }
+
+        break;
     }
-    return data.text as string;
+
+    throw new Error(lastMessage || 'Erro ao comunicar com o servidor');
 }
 
 // ── Geração da História ────────────────────────────────────────────────────
@@ -90,13 +110,15 @@ export async function generateStoryWithGemini(
         systemInstructions += `\n\n[DIRETRIZ OBRIGATÓRIA: O usuário exigiu que esta história seja estritamente BÍBLICA. Você DEVE incluir elementos cristãos, valores ensinados por Deus, princípios bíblicos claros e uma moral cristã no final. Não crie uma história secular, mesmo que o tom seja de aventura.]\n`;
     }
 
+    systemInstructions += `\n\n[REGRA OBRIGATÓRIA DE FORMATO: comece com uma cena narrativa real da história, não com capa, título ou vinheta. Termine com a última cena real da resolução da história. Não inclua pedido de inscrição, curtida, sininho, créditos, tela final, "inscreva-se" ou chamada para canal.]\n`;
+
     const payload = JSON.stringify({
         title: params.title,
         theme: params.theme,
         duration: params.duration,
         minWords,
         maxWords,
-        scenes: 8,
+        scenes: params.sceneCount || 8,
         style: 'Cartoon',
         idea: ideaPrompt,
         systemInstructions,
@@ -215,6 +237,7 @@ export interface GenerateScenesParams {
     duration: number;
     targetSceneCount?: number;
     title?: string;
+    knownCharacters?: string[];
 }
 
 export interface Scene {
@@ -234,40 +257,155 @@ export interface GenerateScenesResponse {
     scenes: Scene[];
 }
 
-export async function generateScenesWithGemini(
-    params: GenerateScenesParams
-): Promise<GenerateScenesResponse> {
-    const storySceneCount = params.targetSceneCount ? params.targetSceneCount : undefined;
+const SCENE_EMOTIONS = ['alegre', 'calma', 'aventura', 'surpresa', 'medo', 'tristeza', 'curiosidade'];
+const NON_STORY_SCENE_PATTERN = /\b(title card|capa|cart[aã]o final|ending card|final card|inscreva|subscribe|sininho|cr[eé]ditos)\b/i;
 
-    let minScenes = 6;
-    let maxScenes = 8;
+function cleanJsonText(rawText: string): string {
+    const text = rawText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const jsonStart = text.indexOf('{');
+    return text.substring(jsonStart !== -1 ? jsonStart : 0);
+}
 
-    if (storySceneCount) {
-        minScenes = storySceneCount;
-        maxScenes = storySceneCount;
-    } else if (params.targetSceneCount) {
-        minScenes = params.targetSceneCount;
-        maxScenes = params.targetSceneCount;
-    } else {
-        if (params.duration >= 5) { minScenes = 8; maxScenes = 12; }
-        if (params.duration >= 10) { minScenes = 12; maxScenes = 15; }
+function parseScenesPayload(rawText: string): any {
+    const text = cleanJsonText(rawText);
+    try {
+        return JSON.parse(text);
+    } catch {
+        let repaired = text;
+        repaired = repaired.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, '');
+        repaired = repaired.replace(/,\s*\{[^}]*$/, '');
+        const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+        const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+        for (let i = 0; i < openBrackets; i++) repaired += ']';
+        for (let i = 0; i < openBraces; i++) repaired += '}';
+        return JSON.parse(repaired);
+    }
+}
+
+function countWords(text: string): number {
+    return text.replace(/\\n/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function normalizeScene(scene: any, index: number, targetAvgDuration: number): Scene {
+    const narration = String(scene?.narration_text || scene?.narrationText || scene?.texto || '').trim();
+    const visual = String(scene?.visual_description || scene?.visualDescription || scene?.descricao_visual || '').trim();
+    const imagePrompt = String(scene?.image_prompt || scene?.imagePrompt || scene?.prompt_imagem || '').trim();
+    const emotion = String(scene?.emotion || scene?.emocao || 'calma').trim().toLowerCase();
+    const characters = Array.isArray(scene?.characters)
+        ? scene.characters
+        : Array.isArray(scene?.personagens)
+            ? scene.personagens
+            : [];
+
+    return {
+        order: index + 1,
+        narration_text: narration,
+        visual_description: visual || narration,
+        image_prompt: imagePrompt,
+        emotion: SCENE_EMOTIONS.includes(emotion) ? emotion : 'calma',
+        duration_estimate: Number(scene?.duration_estimate || scene?.durationEstimate) || targetAvgDuration,
+        characters: characters.map((character: any) => String(character)).filter(Boolean),
+    };
+}
+
+function getSceneValidationIssues(scenes: Scene[], expectedCount: number, narrationText: string): string[] {
+    const issues: string[] = [];
+    if (scenes.length !== expectedCount) {
+        issues.push(`retornou ${scenes.length} cenas, mas precisa retornar exatamente ${expectedCount}`);
     }
 
-    const totalSeconds = params.duration * 60;
-    const storySeconds = totalSeconds;
-    const targetAvgDuration = Math.round(storySeconds / ((minScenes + maxScenes) / 2));
+    scenes.forEach((scene, index) => {
+        if (!scene.narration_text || countWords(scene.narration_text) < 3) {
+            issues.push(`cena ${index + 1} sem trecho de narração suficiente`);
+        }
+        if (!scene.visual_description || countWords(scene.visual_description) < 6) {
+            issues.push(`cena ${index + 1} sem descrição visual suficiente`);
+        }
+        if (!scene.image_prompt || countWords(scene.image_prompt) < 8) {
+            issues.push(`cena ${index + 1} sem image_prompt detalhado`);
+        }
+        const combined = `${scene.narration_text} ${scene.visual_description} ${scene.image_prompt}`;
+        if (NON_STORY_SCENE_PATTERN.test(combined)) {
+            issues.push(`cena ${index + 1} parece capa, CTA, créditos ou cartão final`);
+        }
+    });
 
-    const prompt = `Você é um especialista em roteirização de vídeos infantis para YouTube.
-Sua missão é dividir histórias infantis em cenas visuais, criando um roteiro estruturado e pronto para produção de vídeo.
+    const originalWordCount = countWords(narrationText);
+    const sceneWordCount = countWords(scenes.map(scene => scene.narration_text).join(' '));
+    if (originalWordCount > 80 && sceneWordCount < originalWordCount * 0.65) {
+        issues.push('os trechos de narração das cenas não cobrem a história completa');
+    }
 
-REGRAS DE SEPARAÇÃO:
-1. QUANTIDADE DE CENAS: Crie EXATAMENTE ${minScenes} cenas.
-2. EMOÇÕES: alegre, calma, aventura, surpresa, medo, tristeza, curiosidade.
-3. FORMATO: JSON válido sem markdown.
-4. NÃO crie cenas de introdução (como título do livro) ou encerramento (como 'inscreva-se'). Foque apenas no conteúdo da história.
-5. DESCRIÇÃO VISUAL: Cada cena deve descrever UMA única imagem estática e clara. Evite colagens, múltiplos painéis ou sequências.
+    return issues;
+}
 
-TEXTO DA NARRAÇÃO:
+function splitNarrationIntoChunks(text: string, count: number): string[] {
+    const normalized = text.replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map(sentence => sentence.trim()).filter(Boolean) || [normalized];
+    const chunks = Array.from({ length: count }, () => [] as string[]);
+
+    sentences.forEach((sentence, sentenceIndex) => {
+        const chunkIndex = Math.min(count - 1, Math.floor(sentenceIndex * count / Math.max(1, sentences.length)));
+        chunks[chunkIndex].push(sentence);
+    });
+
+    return chunks.map((chunk, index) => {
+        if (chunk.length > 0) return chunk.join(' ');
+        const words = normalized.split(/\s+/).filter(Boolean);
+        const start = Math.floor(index * words.length / count);
+        const end = Math.floor((index + 1) * words.length / count);
+        return words.slice(start, Math.max(start + 1, end)).join(' ');
+    });
+}
+
+function buildFallbackScenes(narrationText: string, expectedCount: number, targetAvgDuration: number): Scene[] {
+    const chunks = splitNarrationIntoChunks(narrationText, expectedCount);
+    return chunks.map((chunk, index) => ({
+        order: index + 1,
+        narration_text: chunk,
+        visual_description: `Cena ${index + 1}: momento narrativo real deste trecho, com personagens em ação, cenário completo, composição clara e continuidade da história. Trecho: ${chunk.substring(0, 420)}`,
+        image_prompt: `Children story cinematic illustration for scene ${index + 1} of ${expectedCount}. Show the real narrative event from this narration beat with expressive characters, clear action, detailed environment, foreground and background, story-specific props, no title text, no subscribe screen, no ending card. Narration beat: ${chunk.substring(0, 420)}`,
+        emotion: SCENE_EMOTIONS[index % SCENE_EMOTIONS.length],
+        duration_estimate: targetAvgDuration,
+        characters: [],
+    }));
+}
+
+function buildSceneSeparationPrompt(
+    params: GenerateScenesParams,
+    requiredScenes: number,
+    targetAvgDuration: number,
+    previousIssues: string[] = []
+): string {
+    const retryBlock = previousIssues.length
+        ? `\nCORRIJA ESTES PROBLEMAS DA TENTATIVA ANTERIOR:\n- ${previousIssues.join('\n- ')}\n`
+        : '';
+    const characterBlock = params.knownCharacters?.length
+        ? `\nPERSONAGENS OFICIAIS DA HISTÓRIA:\n${params.knownCharacters.map(name => `- ${name}`).join('\n')}\n\nREGRAS PARA O CAMPO characters:\n- Use somente os nomes oficiais listados acima, exatamente como escritos.\n- Não use placeholders como "personagem1", "protagonista", "hero", "child" ou descrições genéricas.\n- Se um personagem oficial aparece ou é citado no trecho da cena, inclua esse nome no array characters.\n- Se a cena tiver o protagonista sem citar o nome claramente, use o primeiro personagem oficial como protagonista.\n`
+        : '';
+
+    return `Você é um especialista em roteirização de vídeos infantis para YouTube.
+Sua missão é dividir a história completa em cenas visuais, sem perder acontecimentos, especialmente o final.
+
+REGRAS OBRIGATÓRIAS:
+1. QUANTIDADE DE CENAS: Crie EXATAMENTE ${requiredScenes} cenas. Nem ${requiredScenes - 1}, nem ${requiredScenes + 1}.
+2. COBERTURA TOTAL: use a história inteira, do primeiro acontecimento até a resolução final. Não resuma a ponto de remover partes importantes.
+3. NARRAÇÃO: narration_text deve conter o trecho correspondente da história, em ordem, preservando o conteúdo narrativo. A soma dos narration_text deve cobrir a história completa.
+4. PRIMEIRA CENA: deve ser a primeira cena real da história, com ação, personagem e cenário. Não crie capa, título, vinheta ou "TITLE CARD".
+5. ÚLTIMA CENA: deve ser a última cena real da história, mostrando a resolução final. Não crie tela final, cartão de encerramento, "inscreva-se", pedido de curtida, sininho, créditos ou chamada para canal.
+6. EMOÇÕES permitidas: alegre, calma, aventura, surpresa, medo, tristeza, curiosidade.
+7. FORMATO: JSON válido sem markdown.
+8. DESCRIÇÃO VISUAL: cada cena deve descrever UMA única imagem estática e clara. Evite colagens, múltiplos painéis ou sequências.
+9. AUTENTICIDADE VISUAL: cada cena precisa parecer um novo momento do filme, não uma variação do mesmo fundo. Mantenha personagens consistentes, mas varie cenário, hora do dia, clima, paleta, profundidade, objetos de cena e composição.
+10. NÃO repita automaticamente floresta ensolarada, caminho de terra, árvores arredondadas, jardim mágico ou backlight dourado. Use esses elementos apenas quando a narrativa pedir.
+11. VARIE O PLANO E A CÂMERA por cena: establishing wide shot, low angle, high angle, over-the-shoulder, close-up emocional, top-down, side view, foreground framing, silhouette, point-of-view.
+12. visual_description deve conter: local específico, ação principal, posição dos personagens, ângulo de câmera, iluminação/hora do dia, detalhes de primeiro plano e fundo.
+13. image_prompt deve estar em inglês, pronto para geração de imagem, incluindo detalhes únicos daquela cena. Não use nomes próprios; descreva personagens visualmente.
+${retryBlock}
+TÍTULO: ${params.title || 'História'}
+${characterBlock}
+
+TEXTO COMPLETO DA NARRAÇÃO:
 ${params.narration_text}
 
 FORMATO DE SAÍDA:
@@ -275,52 +413,59 @@ FORMATO DE SAÍDA:
   "scenes": [
     {
       "order": 1,
-      "narration_text": "...",
-      "visual_description": "...",
+      "narration_text": "trecho real da história para esta cena",
+      "visual_description": "descrição visual completa da cena",
+      "image_prompt": "English image prompt with specific action, camera, setting, lighting, foreground and background",
       "emotion": "alegre",
       "duration_estimate": ${targetAvgDuration},
       "characters": ["personagem1"]
     }
   ]
 }`;
+}
 
-    const rawText = await callVertexText(prompt, { jsonMode: true, temperature: 0.7 });
-    let text = rawText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    const jsonStart = text.indexOf('{');
-    text = text.substring(jsonStart !== -1 ? jsonStart : 0);
+export async function generateScenesWithGemini(
+    params: GenerateScenesParams
+): Promise<GenerateScenesResponse> {
+    let requiredScenes = params.targetSceneCount || 8;
+    if (!params.targetSceneCount) {
+        if (params.duration >= 5) requiredScenes = 10;
+        if (params.duration >= 10) requiredScenes = 15;
+    }
 
-    let data: any;
-    try {
-        data = JSON.parse(text);
-    } catch (parseErr) {
-        console.warn('[Gemini] JSON truncado, tentando reparar...');
-        // Try to repair truncated JSON by closing open structures
-        let repaired = text;
-        // Remove trailing incomplete object/string
-        repaired = repaired.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, '');
-        repaired = repaired.replace(/,\s*\{[^}]*$/, '');
-        // Count and close open brackets
-        const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
-        const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
-        for (let i = 0; i < openBrackets; i++) repaired += ']';
-        for (let i = 0; i < openBraces; i++) repaired += '}';
+    requiredScenes = Math.max(1, Math.round(requiredScenes));
+    const totalSeconds = params.duration * 60;
+    const targetAvgDuration = Math.max(1, Math.round(totalSeconds / requiredScenes));
+    let previousIssues: string[] = [];
+
+    for (let attempt = 0; attempt < 3; attempt++) {
         try {
-            data = JSON.parse(repaired);
-            console.log('[Gemini] JSON reparado com sucesso, cenas recuperadas:', data.scenes?.length || 0);
-        } catch (e2) {
-            console.error('[Gemini] Reparo falhou, retrying...');
-            // Retry with shorter max tokens
-            const retryText = await callVertexText(prompt, { jsonMode: true, temperature: 0.5, maxOutputTokens: 16384 });
-            let retryClean = retryText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-            const retryStart = retryClean.indexOf('{');
-            retryClean = retryClean.substring(retryStart !== -1 ? retryStart : 0);
-            data = JSON.parse(retryClean);
+            const prompt = buildSceneSeparationPrompt(params, requiredScenes, targetAvgDuration, previousIssues);
+            const rawText = await callVertexText(prompt, {
+                jsonMode: true,
+                temperature: attempt === 0 ? 0.45 : 0.25,
+                maxOutputTokens: 16384,
+            });
+
+            const data = parseScenesPayload(rawText);
+            const finalScenes = (Array.isArray(data?.scenes) ? data.scenes : [])
+                .map((scene: any, index: number) => normalizeScene(scene, index, targetAvgDuration));
+            const issues = getSceneValidationIssues(finalScenes, requiredScenes, params.narration_text);
+
+            if (issues.length === 0) {
+                return { scenes: finalScenes };
+            }
+
+            previousIssues = issues;
+            console.warn(`[Gemini] Separação de cenas inválida na tentativa ${attempt + 1}:`, issues);
+        } catch (error: any) {
+            previousIssues = [`resposta JSON inválida ou incompleta: ${error.message}`];
+            console.warn(`[Gemini] Falha ao separar cenas na tentativa ${attempt + 1}:`, error);
         }
     }
-    let finalScenes: Scene[] = data.scenes || [];
-    finalScenes = finalScenes.map((scene, idx) => ({ ...scene, order: idx + 1 }));
 
-    return { scenes: finalScenes };
+    console.warn('[Gemini] Usando fallback determinístico para garantir a quantidade exata de cenas.');
+    return { scenes: buildFallbackScenes(params.narration_text, requiredScenes, targetAvgDuration) };
 }
 
 // ── Prompt de Imagem ───────────────────────────────────────────────────────
@@ -332,10 +477,35 @@ export interface GenerateImagePromptParams {
     is_first_scene?: boolean;
     imageTemplate?: string;
     characterDescriptions?: Record<string, string>;
+    sceneIndex?: number;
+    totalScenes?: number;
 }
 
 export async function generateImagePrompt(params: GenerateImagePromptParams): Promise<string> {
-    // Build a simple, natural descriptive prompt — the style that works best with Gemini 2.5 Flash Image
+    const sceneIndex = params.sceneIndex ?? 0;
+    const totalScenes = Math.max(1, params.totalScenes ?? 1);
+    const recipes = [
+        'establishing wide shot, lots of environment, clear geography, characters small within the world',
+        'low-angle action shot, foreground objects close to camera, strong depth layers',
+        'over-the-shoulder view, character looking toward an important discovery, background tells the story',
+        'high-angle or top-down composition, visible path or object layout, playful geometry',
+        'medium side-view action, characters crossing the frame, motion lines or environmental movement',
+        'intimate close-up with a distinctive prop, background changed by color, texture and light',
+        'dramatic silhouette or rim-light composition, unusual time of day, strong shape language',
+        'point-of-view shot from inside or behind an object, immersive framing, scene-specific details',
+    ];
+    const palettes = [
+        'fresh morning palette with crisp sky colors',
+        'cozy indoor amber and soft shadow palette',
+        'cool blue afternoon palette with reflective highlights',
+        'sunset coral and violet palette',
+        'moonlit teal and silver palette',
+        'rain-washed saturated greens and sparkling puddles',
+        'dusty warm workshop palette with tactile materials',
+        'festival-like multicolor palette with controlled contrast',
+    ];
+    const recipe = recipes[sceneIndex % recipes.length];
+    const palette = palettes[sceneIndex % palettes.length];
     const parts: string[] = [];
 
     // Character descriptions first (most important for consistency)
@@ -344,26 +514,30 @@ export async function generateImagePrompt(params: GenerateImagePromptParams): Pr
             if (charName === '__PROTAGONIST__') return;
             const desc = params.characterDescriptions![charName];
             if (desc) {
-                parts.push(desc.substring(0, 200));
+                parts.push(`Character identity to preserve: ${desc.substring(0, 240)}`);
             }
         });
     }
 
     // Scene action
     if (params.visual_description) {
-        parts.push(params.visual_description);
+        parts.push(`Unique storyboard moment (scene ${sceneIndex + 1} of ${totalScenes}): ${params.visual_description}`);
     }
+
+    parts.push(`Composition recipe: ${recipe}`);
+    parts.push(`Scene-specific color and light: ${palette}`);
+    parts.push('Make the setting feel unique to this exact story beat; change location details, props, weather, time of day, depth layers and camera placement from other scenes');
 
     // Style
     const is2D = params.visual_style === 'Estilo 2D Cartoon';
     const styleStr = is2D
-        ? 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, magical lighting, warm golden backlight, soft colorful shading, very vibrant colors, crisp clean outlines, animated children storybook style, NO 3D rendering, NO CGI, well-proportioned anatomy, correct number of limbs'
-        : '3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs';
+        ? 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, scene-specific cinematic lighting, soft colorful shading, very vibrant colors, crisp clean outlines, animated children storybook style, NO 3D rendering, NO CGI, well-proportioned anatomy, correct number of limbs'
+        : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, scene-specific cinematic lighting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs';
 
     // Emotion
     const emotionStr = params.emotion ? `, ${params.emotion} mood` : '';
 
-    return `${parts.join(', ')}, ${styleStr}${emotionStr}, fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9`;
+    return `${parts.join(', ')}, ${styleStr}${emotionStr}, fully detailed environment background, authentic cinematic storytelling frame, avoid generic repeated sunny forest path, avoid identical background composition, NO white background, NO plain background, children book illustration, widescreen 16:9`;
 }
 
 export interface GenerateCharacterDescriptionsParams {

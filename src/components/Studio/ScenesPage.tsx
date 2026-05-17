@@ -7,7 +7,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { StoryWithNarration, StoryWithScenes, Scene, CharacterDNA } from '../../types/studio';
-import { generateScenesWithGemini, extractCharactersFromStory, generateCharacterSheet } from '../../services/gemini';
+import { extractCharactersFromStory, extractStructuredCharacterData, generateScenesWithGemini } from '../../services/gemini';
+import { generateImageWithNanoBanana } from '../../services/google_image';
 import { Loader2, User, Palette, Shirt, Sparkles } from 'lucide-react';
 
 interface ScenesPageProps {
@@ -51,12 +52,24 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
         try {
             console.log('[ScenesPage] Generating scenes and characters...');
 
-            // 1. Generate scenes
+            // 1. Extract character names before scene separation so scenes can use official names.
+            let extractedCharacters: Record<string, string> = {};
+            try {
+                extractedCharacters = await extractCharactersFromStory(story.storyText);
+                console.log('[ScenesPage] Extracted characters:', extractedCharacters);
+            } catch (err) {
+                console.error('[ScenesPage] Error extracting characters:', err);
+            }
+
+            const characterNames = Object.keys(extractedCharacters);
+
+            // 2. Generate scenes
             const scenesResult = await generateScenesWithGemini({
                 narration_text: story.storyText,
                 duration: story.duration,
                 targetSceneCount: story.sceneCount,
-                title: story.title
+                title: story.title,
+                knownCharacters: characterNames
             });
 
             const generatedScenes: Scene[] = scenesResult.scenes.map((scene: any, index: number) => ({
@@ -72,18 +85,11 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
 
             setScenes(generatedScenes);
 
-            // 2. Extract character names
-            const extractedCharacters = await extractCharactersFromStory(story.storyText);
-            console.log('[ScenesPage] Extracted characters:', extractedCharacters);
-
             // 3. Generate structured character data for main characters
-            const characterNames = Object.keys(extractedCharacters);
             const characterDNAs: Record<string, CharacterDNA> = {};
 
             for (const name of characterNames.slice(0, 5)) { // Limit to 5 characters to avoid hitting rate limits or taking too long
                 try {
-                    // Use new structured extraction function
-                    const { extractStructuredCharacterData } = await import('../../services/gemini');
                     const structuredData = await extractStructuredCharacterData(story.storyText, name, story.visualStyle);
 
                     characterDNAs[name] = {
@@ -138,7 +144,6 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
 
             const characterPrompt = `${baseStyle}. A cute character design of ${character.name}, ${character.species}. Colors: ${character.mainColors.join(', ')}. Clothing: ${character.clothing}. ${character.accessories !== 'Nenhum' ? `Accessories: ${character.accessories}.` : ''} ${shortDesc}. Adorable, friendly, full body portrait, centered, white neutral background, high quality, professional character sheet.`;
 
-            const { generateImageWithNanoBanana } = await import('../../services/google_image');
             const imageUrl = await generateImageWithNanoBanana(characterPrompt, story.visualStyle);
 
             setCharacterReferenceImages(prev => ({ ...prev, [characterName]: imageUrl }));

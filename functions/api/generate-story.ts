@@ -50,6 +50,7 @@ async function generateViaVertexAI(
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
     const { title, theme, duration, minWords, maxWords, scenes, style, idea, systemInstructions, ageRequirements, toneRequirements } = (await request.json()) as any;
+    const requestedScenes = Math.max(1, Number(scenes) || 8);
 
     const prompt = `${systemInstructions || 'Crie uma historia infantil em portugues brasileiro.'}
 
@@ -58,20 +59,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     Tema: ${theme}
     Duração: ${duration} minutos de leitura
     Tamanho OBRIGATÓRIO: A história COMPLETA (soma de todas as cenas) DEVE ter entre ${minWords} e ${maxWords} palavras. Você será penalizado se não seguir esta regra de tamanho.
-    Quantidade EXATA de cenas: Você DEVE gerar EXATAMENTE ${scenes} cenas no array JSON (numeradas de 1 a ${scenes}). É CRITICAMENTE IMPORTANTE não fazer menos que ${scenes} cenas. Divida a história para preencher exatamente ${scenes} blocos.
+    Quantidade EXATA de cenas: Você DEVE gerar EXATAMENTE ${requestedScenes} cenas no array JSON (numeradas de 1 a ${requestedScenes}). É CRITICAMENTE IMPORTANTE não fazer menos que ${requestedScenes} cenas. Divida a história para preencher exatamente ${requestedScenes} blocos.
+    Cena inicial: a cena 1 deve ser o primeiro acontecimento real da história, com personagem, ação e cenário. NÃO crie capa, título, vinheta ou apresentação visual.
+    Cena final: a última cena deve ser o fechamento real da narrativa, com resolução emocional e visual. NÃO crie tela final, cartão de encerramento, "inscreva-se", pedido de curtida, sininho, créditos ou chamada para canal.
+    Cobertura narrativa: todas as partes importantes da história devem aparecer entre a cena 1 e a cena ${requestedScenes}; não pule a resolução final.
     
     ${ageRequirements ? "Requisitos de Idade:\n" + ageRequirements : ""}
     ${toneRequirements ? "Requisitos de Tom:\n" + toneRequirements : ""}
     ${idea || ""}
 
-    DIRETRIZES DE IMAGEM PARA VARIEDADE:
-    As imagens geradas (prompt_imagem) NÃO devem ser apenas retratos dos personagens (close-ups). Você DEVE variar ativamente:
-    - O ângulo de câmera: Wide shot, low angle, high angle, over-the-shoulder.
-    - A distância: Extreme wide shot (mostrando o ambiente e os personagens pequenos), medium shot, close-up apenas quando necessário para emoções.
-    - A ação: Personagens correndo, pulando, interagindo com objetos, de costas olhando algo gigante, escondidos atrás de algo.
-    - O cenário: Mude a iluminação e a perspectiva a cada cena.
-    - Evite que todas as imagens sejam "personagem no centro sorrindo para a câmera".
-    - FUNDO/CENÁRIO OBRIGATÓRIO: NUNCA use "fundo branco", "white background", "solid background" ou "plain background" no prompt_imagem. O cenário DEVE estar sempre preenchido com um ambiente detalhado (ex: uma floresta mágica iluminada, o interior de uma casa aconchegante, um campo florido sob o sol).
+    DIRETRIZES DE IMAGEM PARA AUTENTICIDADE E VARIEDADE:
+    As imagens geradas (prompt_imagem) NÃO devem parecer variações do mesmo fundo. Mantenha os personagens consistentes, mas mude ativamente o mundo visual de cada cena.
+    - Cada prompt_imagem deve incluir: local específico, ação, ângulo de câmera, distância do plano, primeiro plano, fundo, horário/clima, paleta de cores e objetos narrativos.
+    - Varie a câmera: establishing wide shot, low angle, high angle, over-the-shoulder, top-down, side view, point-of-view, close-up emocional apenas quando fizer sentido.
+    - Varie o cenário: interior, exterior, margem de rio, oficina, toca, campo aberto, alto de árvore, céu, sombra, chuva, noite, amanhecer, detalhe de objeto, etc., conforme a história permitir.
+    - NÃO repita automaticamente floresta ensolarada, caminho de terra, jardim mágico, árvores arredondadas ou backlight dourado em todas as cenas.
+    - Evite que todas as imagens sejam "personagem no centro sorrindo para a câmera". Mostre personagens agindo, descobrindo, olhando para algo, interagindo com objetos ou pequenos dentro de um cenário amplo.
+    - FUNDO/CENÁRIO OBRIGATÓRIO: NUNCA use "fundo branco", "white background", "solid background" ou "plain background". O cenário deve ser detalhado e específico daquela cena.
 
     Retorne a história JSON ESTRITAMENTE com a seguinte estrutura:
     {
@@ -89,7 +93,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       contents: [{ role: "user", parts: [{ text: prompt + '\n\nIMPORTANTE (EVITAR ERRO DE JSON): NÃO use quebras de linha reais dentro do valor das strings (use \\n). Se precisar de aspas dentro do texto, certifique-se de usar aspas simples (\') para não quebrar o formato JSON.' }] }],
       generationConfig: {
         temperature: 0.8,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 16384,
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",

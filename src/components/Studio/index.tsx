@@ -158,8 +158,7 @@ export function StudioIndex() {
             // Get preview image from Scenes/Thumbnail
             let previewImage: string | undefined;
             if (newState.storyWithScenes?.scenes) {
-                const intro = newState.storyWithScenes.scenes.find(s => s.visualDescription.includes('TITLE CARD'));
-                if (intro?.imageUrl) previewImage = intro.imageUrl;
+                previewImage = newState.storyWithScenes.thumbnailUrl || newState.storyWithScenes.scenes.find(s => s.imageUrl)?.imageUrl;
             }
 
             const project: StoryProject = {

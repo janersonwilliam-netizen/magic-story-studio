@@ -1,11 +1,8 @@
 /// <reference types="vite/client" />
 /**
- * Gemini Image Generation Service (Nano Banana / Imagen 3)
- * Uses the @google/genai SDK with Gemini 2.5 Flash Image model
+ * Gemini Image Generation Service
+ * Uses the backend /api/generate-image endpoint with Gemini 3.1 Flash Image.
  */
-
-import { GoogleGenAI } from '@google/genai';
-import { generateImageVertex } from './vertex_service';
 
 export function isVertexConfigured(): boolean {
     // Check both standard Vite env and the global fallback injection
@@ -33,14 +30,14 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
     // Helper: builds the mandatory style suffix based on styleConfig
     function getStyleSuffix(config?: string): string {
         if (config === 'Estilo 2D Cartoon') {
-            return '. STYLE: Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, magical lighting, warm golden backlight, very vibrant colors, soft colorful shading, crisp clean outlines, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, NO 3D rendering, NO CGI, NO photorealism, widescreen 16:9';
+            return '. STYLE: Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, scene-specific cinematic lighting, very vibrant colors, soft colorful shading, crisp clean outlines, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed environment background, unique location and camera angle for this scene, NO repeated generic sunny forest path, NO white background, NO plain background, NO 3D rendering, NO CGI, NO photorealism, widescreen 16:9';
         }
-        return '. STYLE: 3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9';
+        return '. STYLE: 3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, scene-specific cinematic lighting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs, fully detailed environment background, unique location and camera angle for this scene, NO repeated generic sunny forest path, NO white background, NO plain background, children book illustration, widescreen 16:9';
     }
 
     // If the prompt is already in English (our new descriptive prompts), skip translation
     // but STILL append style suffix to guarantee consistency
-    const isAlreadyEnglish = prompt.match(/^(A |An |The |Children|3D |2D |Cute |Scene|Title)/i) 
+    const isAlreadyEnglish = prompt.match(/^(A |An |The |Children|3D |2D |Cute |Scene|Title|Unique|Cinematic|Character)/i)
         || prompt.match(/Pixar animation style/i)
         || prompt.match(/children book illustration/i)
         || prompt.match(/widescreen 16:9/i);
@@ -50,7 +47,7 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
         let result = prompt.replace(/\s+/g, ' ').trim();
         // Truncate the description part to leave room for the style suffix
         const suffix = styleConfig ? getStyleSuffix(styleConfig) : '';
-        const maxDescLen = 900 - suffix.length;
+        const maxDescLen = 1200 - suffix.length;
         if (result.length > maxDescLen) {
             result = result.substring(0, maxDescLen);
         }
@@ -70,12 +67,12 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: `Translate this image generation prompt from Portuguese to English. IMPORTANT: Keep any text inside quotes exactly as-is (do not translate quoted title text). Make it concise, descriptive, and maximum 400 characters long. Do not include introductory text, just the translation:\n${prompt}`
+                    prompt: `Translate this image generation prompt from Portuguese to English. IMPORTANT: Keep any text inside quotes exactly as-is (do not translate quoted title text). Preserve camera angle, location, lighting, props and uniqueness instructions. Make it concise but specific, maximum 700 characters. Do not include introductory text, just the translation:\n${prompt}`
                 })
             });
             const data = await response.json() as any;
             if (data.text) {
-                let translated = data.text.trim().substring(0, 600);
+                let translated = data.text.trim().substring(0, 900);
                 // Always append style suffix after LLM translation
                 if (styleConfig) {
                     translated += getStyleSuffix(styleConfig);
@@ -86,7 +83,7 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
             console.error('LLM Translation failed', e);
         }
         // Fallback: truncate and add style
-        let fallback = prompt.replace(/\s+/g, ' ').trim().substring(0, 600);
+        let fallback = prompt.replace(/\s+/g, ' ').trim().substring(0, 900);
         if (styleConfig) {
             fallback += getStyleSuffix(styleConfig);
         }
@@ -172,7 +169,7 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
 
     // 1. TEXT/TITLE for thumbnails
     if (titleText) {
-        optimized += `Title text "${titleText.substring(0, 50)}" in thick chunky 3D extruded letters at top, each word different vibrant color, thematic textures, drop shadows, glossy shine. `;
+        optimized += `Main title text "${titleText.substring(0, 70)}" spelled exactly, no subtitle, no second-language translation, no random standalone letters. Custom family movie logo typography occupying the top third: chunky hand-lettered rounded letters, cinematic bevels, playful irregular baseline, thematic materials and colors inspired by the story, readable from a distance, soft shadows, glossy highlights. `;
     }
 
     // 2. SCENE ACTION
@@ -269,17 +266,17 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
 
     // 5. Style suffix (simple descriptive, like the successful lion test)
     if (styleConfig === 'Estilo 2D Cartoon') {
-        optimized += 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, magical lighting, warm golden backlight. Very vibrant colors, soft colorful shading, crisp clean outlines. Animated children storybook style, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, NO 3D rendering, NO CGI, widescreen 16:9';
+        optimized += 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, scene-specific cinematic lighting. Very vibrant colors, soft colorful shading, crisp clean outlines. Animated children storybook style, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed unique environment background, NO repeated generic sunny forest path, NO white background, NO plain background, NO 3D rendering, NO CGI, widescreen 16:9';
     } else {
-        optimized += '3D Pixar animation style, big expressive eyes, soft rounded features, warm cinematic lighting, vibrant colors, well-proportioned anatomy, correct number of limbs, fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9';
+        optimized += '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, scene-specific cinematic lighting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs, fully detailed unique environment background, NO repeated generic sunny forest path, NO white background, NO plain background, children book illustration, widescreen 16:9';
     }
 
     // Final cleanup
     optimized = optimized.replace(/,\s*,/g, ',').replace(/\s+/g, ' ').trim();
     
-    // Gemini 2.5 Flash Image supports longer prompts
-    if (optimized.length > 800) {
-        optimized = optimized.substring(0, 800);
+    // Gemini 3.1 Flash Image supports longer prompts
+    if (optimized.length > 1200) {
+        optimized = optimized.substring(0, 1200);
     }
 
     console.log('[Translate] Species detected:', speciesEN || 'not specified');
@@ -357,7 +354,10 @@ export async function generateImageWithReferences(
     }
     
     const optimizedPrompt = await translateAndCompactPrompt(prompt, styleConfig);
-    const enhancedPrompt = `${optimizedPrompt}, matching the reference images exactly, same character colors and features`;
+    const isCoverTextEdit = /KEEP THE VISUAL|SAME background|ONLY CHANGE THE TITLE TEXT/i.test(prompt);
+    const enhancedPrompt = isCoverTextEdit
+        ? `${optimizedPrompt}, use the reference image as the layout, character, pose and background guide; only change the requested title text, keep the poster composition stable`
+        : `${optimizedPrompt}, match only the character identity from the reference images exactly: same character colors, proportions, accessories and facial features. Use the new scene environment, camera angle, lighting and pose from this prompt; do not copy the reference background or repeat the same pose unless explicitly requested`;
 
     const maxRetries = 5;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
