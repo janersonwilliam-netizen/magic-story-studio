@@ -51,6 +51,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
     const { title, theme, duration, minWords, maxWords, scenes, style, idea, systemInstructions, ageRequirements, toneRequirements } = (await request.json()) as any;
     const requestedScenes = Math.max(1, Number(scenes) || 8);
+    const minWordsPerScene = Math.max(10, Math.round(Number(minWords) / requestedScenes));
+    const maxWordsPerScene = Math.max(15, Math.round(Number(maxWords) / requestedScenes));
 
     const prompt = `${systemInstructions || 'Crie uma historia infantil em portugues brasileiro.'}
 
@@ -59,9 +61,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     Tema: ${theme}
     Duração: ${duration} minutos de leitura
     Tamanho OBRIGATÓRIO: A história COMPLETA (soma de todas as cenas) DEVE ter entre ${minWords} e ${maxWords} palavras. Você será penalizado se não seguir esta regra de tamanho.
+    Tamanho por cena: Cada uma das ${requestedScenes} cenas no array JSON DEVE ter OBRIGATORIAMENTE entre ${minWordsPerScene} e ${maxWordsPerScene} palavras no campo "texto". Use descrições ricas, detalhes emocionais e diálogos expressivos para preencher essa quantidade de texto em todas as cenas de forma consistente.
     Quantidade EXATA de cenas: Você DEVE gerar EXATAMENTE ${requestedScenes} cenas no array JSON (numeradas de 1 a ${requestedScenes}). É CRITICAMENTE IMPORTANTE não fazer menos que ${requestedScenes} cenas. Divida a história para preencher exatamente ${requestedScenes} blocos.
-    Cena inicial: a cena 1 deve ser o primeiro acontecimento real da história, com personagem, ação e cenário. NÃO crie capa, título, vinheta ou apresentação visual.
-    Cena final: a última cena deve ser o fechamento real da narrativa, com resolução emocional e visual. NÃO crie tela final, cartão de encerramento, "inscreva-se", pedido de curtida, sininho, créditos ou chamada para canal.
+    Cena inicial: a cena 1 DEVE, OBRIGATORIAMENTE, iniciar o texto de narração com a seguinte frase exata de abertura: "Hoje eu vou contar uma historinha [Titulo da Historia]...". Seguido imediatamente da apresentação do personagem principal e do cenário encantado da história. NÃO crie título, capa ou vinheta separados.
+    Cena final: a última cena DEVE, OBRIGATORIAMENTE, finalizar o texto de narração com a lição/moral da história seguida de forma integral pela chamada e encerramento exato: "Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Um beijo grande… e até a próxima história! Tchau, tchau!".
     Cobertura narrativa: todas as partes importantes da história devem aparecer entre a cena 1 e a cena ${requestedScenes}; não pule a resolução final.
     
     ${ageRequirements ? "Requisitos de Idade:\n" + ageRequirements : ""}

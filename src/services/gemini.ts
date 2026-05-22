@@ -98,8 +98,8 @@ export async function generateStoryWithGemini(
         toneRequirements = `- Atmosfera curiosa e investigativa\n- Ritmo equilibrado\n- Elementos de aprendizado natural\n- Fatos interessantes integrados à narrativa\n- Resolução que reforça o aprendizado`;
     }
 
-    const minWords = Math.round(params.duration * 115);
-    const maxWords = Math.round(params.duration * 135);
+    const minWords = Math.round(params.duration * 130);
+    const maxWords = Math.round(params.duration * 150);
 
     let ideaPrompt = '';
     if (params.storyIdea?.trim()) {
@@ -110,7 +110,7 @@ export async function generateStoryWithGemini(
         systemInstructions += `\n\n[DIRETRIZ OBRIGATÓRIA: O usuário exigiu que esta história seja estritamente BÍBLICA. Você DEVE incluir elementos cristãos, valores ensinados por Deus, princípios bíblicos claros e uma moral cristã no final. Não crie uma história secular, mesmo que o tom seja de aventura.]\n`;
     }
 
-    systemInstructions += `\n\n[REGRA OBRIGATÓRIA DE FORMATO: comece com uma cena narrativa real da história, não com capa, título ou vinheta. Termine com a última cena real da resolução da história. Não inclua pedido de inscrição, curtida, sininho, créditos, tela final, "inscreva-se" ou chamada para canal.]\n`;
+    systemInstructions += `\n\n[REGRA OBRIGATÓRIA DE FORMATO: A primeira cena deve iniciar obrigatoriamente com a frase exata: "Hoje eu vou contar uma historinha [Titulo da Historia]...". A última cena deve conter o encerramento narrativo completo com a moral ou lição da história, finalizando obrigatoriamente com a chamada de encerramento exata: "Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Um beijo grande… e até a próxima história! Tchau, tchau!". Não inclua capa, título ou tela final separados.]\n`;
 
     const payload = JSON.stringify({
         title: params.title,
@@ -391,8 +391,8 @@ REGRAS OBRIGATÓRIAS:
 1. QUANTIDADE DE CENAS: Crie EXATAMENTE ${requiredScenes} cenas. Nem ${requiredScenes - 1}, nem ${requiredScenes + 1}.
 2. COBERTURA TOTAL: use a história inteira, do primeiro acontecimento até a resolução final. Não resuma a ponto de remover partes importantes.
 3. NARRAÇÃO: narration_text deve conter o trecho correspondente da história, em ordem, preservando o conteúdo narrativo. A soma dos narration_text deve cobrir a história completa.
-4. PRIMEIRA CENA: deve ser a primeira cena real da história, com ação, personagem e cenário. Não crie capa, título, vinheta ou "TITLE CARD".
-5. ÚLTIMA CENA: deve ser a última cena real da história, mostrando a resolução final. Não crie tela final, cartão de encerramento, "inscreva-se", pedido de curtida, sininho, créditos ou chamada para canal.
+4. PRIMEIRA CENA: deve conter o início exato da história gerada, preservando de forma integral a frase exata de abertura ("Hoje eu vou contar uma historinha..."), integrada à primeira ação e cenário da história. NÃO remova, corte ou simplifique a introdução textual de forma alguma. NÃO crie capa, título, vinheta ou "TITLE CARD".
+5. ÚLTIMA CENA: deve conter o final exato da história gerada, preservando de forma integral a lição/moral da história e a chamada de encerramento exata ("Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Um beijo grande… e até a próxima história! Tchau, tchau!"), mostrando a resolução final. NÃO remova, corte ou simplifique esse encerramento textual de forma alguma.
 6. EMOÇÕES permitidas: alegre, calma, aventura, surpresa, medo, tristeza, curiosidade.
 7. FORMATO: JSON válido sem markdown.
 8. DESCRIÇÃO VISUAL: cada cena deve descrever UMA única imagem estática e clara. Evite colagens, múltiplos painéis ou sequências.

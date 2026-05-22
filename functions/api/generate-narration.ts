@@ -14,7 +14,7 @@ interface Env {
 }
 
 // Modelos TTS disponíveis (em ordem de preferência)
-const TTS_MODELS = ['gemini-2.5-flash-tts', 'gemini-2.5-pro-tts', 'gemini-2.5-flash-lite-preview-tts'] as const;
+const TTS_MODELS = ['gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-tts', 'gemini-2.5-pro-tts', 'gemini-2.5-flash-lite-preview-tts'] as const;
 
 /**
  * Detecta se GCP_CREDENTIALS_JSON tem credenciais válidas (Service Account ou Authorized User)

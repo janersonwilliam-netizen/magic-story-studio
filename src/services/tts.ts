@@ -93,6 +93,9 @@ export async function generateAudioNarration(params: GenerateAudioParams): Promi
     const isGemini = Object.keys(GEMINI_VOICES).includes(voiceName);
 
     if (isGemini || googleBillingUnavailable) {
+        if (text.length > 1000) {
+            return generateLongAudioNarration(params);
+        }
         return generateGeminiAudio(params);
     } else {
         // Google Cloud for 'pt-BR-*' voices, with graceful fallback for billing errors
@@ -112,11 +115,15 @@ export async function generateAudioNarration(params: GenerateAudioParams): Promi
             googleBillingUnavailable = true;
             console.warn('[TTS] Google billing not enabled. Falling back to Gemini TTS.');
             const fallbackVoice = mapGoogleVoiceToGemini(voiceName);
-            return generateGeminiAudio({
+            const fallbackParams = {
                 ...params,
                 voiceName: fallbackVoice,
                 emotion
-            });
+            };
+            if (text.length > 1000) {
+                return generateLongAudioNarration(fallbackParams);
+            }
+            return generateGeminiAudio(fallbackParams);
         }
     }
 }
@@ -354,14 +361,12 @@ function splitTextIntoChunks(text: string, maxChunkSize: number = 4000): string[
 
 /**
  * Generate audio for long text by chunking and concatenating
- * Note: This is a simplified approach. For production, consider using
- * a proper audio concatenation library or backend processing
  */
 export async function generateLongAudioNarration(params: GenerateAudioParams): Promise<string> {
-    const chunks = splitTextIntoChunks(params.text);
-    console.log(`[Gemini TTS] Text too long, split into ${chunks.length} chunks`);
+    const chunks = splitTextIntoChunks(params.text, 1000); // chunk size of 1000 characters
+    console.log(`[Gemini TTS] Text too long (${params.text.length} chars), split into ${chunks.length} chunks`);
 
-    const audioParts: string[] = [];
+    const pcmBuffers: Uint8Array[] = [];
     const totalWords = countWords(params.text);
 
     for (let i = 0; i < chunks.length; i++) {
@@ -371,8 +376,8 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
             ? (params.targetDurationMinutes * chunkWords) / totalWords
             : undefined;
 
-        // Generate audio for each chunk
-        const dataUrl = await generateAudioNarration({
+        // Generate audio for each chunk using Gemini directly
+        const dataUrl = await generateGeminiAudio({
             ...params,
             text: chunks[i],
             targetDurationMinutes: chunkDurationTarget
@@ -380,13 +385,31 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
 
         // Extract base64 data (remove "data:audio/wav;base64," prefix)
         const base64 = dataUrl.split(',')[1];
-        audioParts.push(base64);
+        const wavBytes = base64ToUint8Array(base64);
+        
+        // Slices off the 44-byte WAV header, leaving raw PCM
+        if (wavBytes.length > 44) {
+            pcmBuffers.push(wavBytes.subarray(44));
+        } else {
+            pcmBuffers.push(wavBytes);
+        }
     }
 
-    // Simple concatenation of WAV base64 chunks
-    // Note: This may not work perfectly for WAV format
-    // For production, consider using a proper audio processing library
-    return `data:audio/wav;base64,${audioParts.join('')}`;
+    // Concatenate all PCM buffers
+    let totalLength = 0;
+    for (const buf of pcmBuffers) totalLength += buf.length;
+    
+    const concatenatedPcm = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of pcmBuffers) {
+        concatenatedPcm.set(buf, offset);
+        offset += buf.length;
+    }
+
+    // Create single valid WAV with unified header (24000Hz, 1 channel, 16-bit PCM)
+    const wavBytes = createWavFromPcm16(concatenatedPcm, 24000, 1);
+    const wavBase64 = uint8ArrayToBase64(wavBytes);
+    return `data:audio/wav;base64,${wavBase64}`;
 }
 
 /**
@@ -410,4 +433,3 @@ export function getEmotionPrompt(emotion: string): GenerateAudioParams['emotion'
 
     return emotionMap[emotion.toLowerCase()] || 'warmly';
 }
-

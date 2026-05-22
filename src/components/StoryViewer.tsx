@@ -196,9 +196,9 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                 .eq('user_id', user.id)
                 .single();
 
-            // if (data?.character_sheet_template) {
-            //    setCharacterSheetTemplate(data.character_sheet_template);
-            // }
+            if (data?.character_sheet_template) {
+               setCharacterSheetTemplate(data.character_sheet_template);
+            }
         } catch (err) {
             console.error('Error loading preferences:', err);
         }
@@ -207,14 +207,6 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
     async function fetchUsageLimits() {
         if (!user) return;
         try {
-            const today = new Date().toISOString().split('T')[0];
-            // const { count } = await supabase
-            //    .from('image_usage')
-            //    .select('*', { count: 'exact', head: true })
-            //    .eq('user_id', user.id)
-            //    .gte('created_at', today);
-
-            // setUsageLimits({ remaining: Math.max(0, 50 - (count || 0)), limit: 50 });
             setUsageLimits({ remaining: 50, limit: 50 });
         } catch (err) {
             console.error('Error fetching limits:', err);
@@ -286,6 +278,25 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                 }
             }
 
+            let customInstructions = undefined;
+            if (user?.id) {
+                try {
+                    const { data, error: fetchError } = await supabase
+                        .from('user_preferences')
+                        .select('master_prompt_instructions, master_prompt_instructions_biblica')
+                        .eq('user_id', user.id)
+                        .single();
+
+                    if (data && !fetchError) {
+                        customInstructions = story.theme === 'biblica'
+                            ? data.master_prompt_instructions_biblica
+                            : data.master_prompt_instructions;
+                    }
+                } catch (err) {
+                    console.error('[StoryViewer] Error fetching user preferences:', err);
+                }
+            }
+
             const { story_text, narration_text } = await generateStoryWithGemini({
                 title: story.title,
                 age_group: story.age_group,
@@ -293,6 +304,7 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                 theme: story.theme || 'classica',
                 duration: story.duration,
                 sceneCount: targetSceneCount,
+                customSystemInstructions: customInstructions,
             });
 
             await supabase.from('stories').update({ story_text, narration_text, status: 'draft' }).eq('id', storyId);
