@@ -12,6 +12,12 @@ export interface GenerateAudioParams {
     speakingRate?: number; // Not directly supported, but can be adjusted via prompt
     pitch?: number; // Not directly supported, but can be adjusted via prompt
     temperature?: number;
+    /** Tamanho máximo (chars) de cada bloco enviado ao TTS. Default MAX_TTS_CHUNK_CHARS.
+     *  Exposto p/ a página de teste comparar "menos emendas (bloco maior)" vs "volume estável (bloco menor)". */
+    maxChunkChars?: number;
+    /** Se true, NÃO aplica normalização RMS por bloco nem o nivelador de volume —
+     *  retorna o áudio CRU do Gemini. Só p/ a página de teste comparar cru vs nivelado. */
+    disableLeveling?: boolean;
 }
 
 export type TTSProvider = 'gemini' | 'google-cloud';
@@ -77,6 +83,28 @@ import { generateGoogleCloudAudio } from './google_tts';
 let googleBillingUnavailable = false;
 
 /**
+ * Max characters sent to Gemini TTS in a SINGLE generation.
+ *
+ * IMPORTANTE (2026-06-15): subiu de 1500 → 4000. Antes era pequeno para conter a
+ * DERIVA DE VOLUME do modelo em trechos longos — mas isso trocava um problema por
+ * outro: cada bloco é uma chamada `generateContent` independente e STATELESS, e o
+ * modelo escolhe um TIMBRE ligeiramente diferente a cada chamada → "a voz muda do
+ * meio para o fim e depois volta". Agora que o nivelador de volume
+ * (`levelLoudnessSlow`) corrige a deriva de volume de forma robusta, podemos usar
+ * blocos GRANDES: quanto menos blocos, menos trocas de voz. Com ≤4000 chars
+ * (~5 min) a história inteira costuma caber em UMA chamada = UMA voz só. Acima
+ * disso, fragmenta no MENOR número de blocos (grandes), com crossfade na emenda.
+ */
+const MAX_TTS_CHUNK_CHARS = 900;
+
+/**
+ * Volume médio (RMS) alvo, em escala linear (0..1). ~0,12 ≈ -18 dBFS.
+ * Usado tanto na normalização POR BLOCO (entre chunks) quanto no nivelador
+ * lento (dentro do áudio), para que os dois trabalhem no mesmo alvo.
+ */
+const TARGET_RMS = 0.105;
+
+/**
  * Generate audio narration using selected provider
  */
 export async function generateAudioNarration(params: GenerateAudioParams): Promise<string> {
@@ -93,10 +121,13 @@ export async function generateAudioNarration(params: GenerateAudioParams): Promi
     const isGemini = Object.keys(GEMINI_VOICES).includes(voiceName);
 
     if (isGemini || googleBillingUnavailable) {
-        if (text.length > 1000) {
+        try {
+            return await generateSingleGeminiAudioNarration(params);
+        } catch (error: any) {
+            if (!isLikelyTtsLengthLimit(error?.message || error)) throw error;
+            console.warn('[TTS] Single-pass Gemini TTS hit a provider limit. Falling back to chunked generation.');
             return generateLongAudioNarration(params);
         }
-        return generateGeminiAudio(params);
     } else {
         // Google Cloud for 'pt-BR-*' voices, with graceful fallback for billing errors
         try {
@@ -120,10 +151,7 @@ export async function generateAudioNarration(params: GenerateAudioParams): Promi
                 voiceName: fallbackVoice,
                 emotion
             };
-            if (text.length > 1000) {
-                return generateLongAudioNarration(fallbackParams);
-            }
-            return generateGeminiAudio(fallbackParams);
+            return generateSingleGeminiAudioNarration(fallbackParams);
         }
     }
 }
@@ -136,6 +164,18 @@ function isGoogleBillingError(message: string): boolean {
         || m.includes('google cloud tts error:')
         || m.includes('longer than the limit') // Text too long for Google TTS - fall back to Gemini which handles chunking
         || m.includes('5000 bytes');            // Same error, different wording
+}
+
+function isLikelyTtsLengthLimit(message: string): boolean {
+    const m = String(message || '').toLowerCase();
+    return m.includes('too long')
+        || m.includes('longer than')
+        || m.includes('maximum')
+        || m.includes('max')
+        || m.includes('limit')
+        || m.includes('quota')
+        || m.includes('tokens')
+        || m.includes('input size');
 }
 
 function mapGoogleVoiceToGemini(googleVoiceName: string): GeminiVoiceOption {
@@ -159,7 +199,8 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
         voiceName = 'Kore'
     } = params;
 
-    const styleInstruction = buildGeminiNarrationPrompt(text, emotion, params.targetDurationMinutes);
+    const safeText = sanitizeTtsTranscript(text);
+    const styleInstruction = buildGeminiNarrationPrompt(safeText, emotion, params.targetDurationMinutes, voiceName);
 
     console.log('[Gemini TTS via Cloudflare] Requesting:', voiceName);
 
@@ -167,10 +208,9 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            text,
+            text: safeText,
             voice: voiceName,
-            styleInstruction,
-            temperature: params.temperature
+            styleInstruction
         })
     });
 
@@ -187,6 +227,41 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
 
     // Return as data URL so it can be safely saved to IndexedDB/Supabase and persists across reloads
     return `data:audio/wav;base64,${data.audio}`;
+}
+
+function sanitizeTtsTranscript(text: string): string {
+    return String(text || '')
+        // Gemini TTS treats bracketed cues as audio tags. Remove generated stage
+        // directions so they cannot trigger boxed/whispered delivery.
+        .replace(/\[(?:[^\]]{1,80})\]/g, ' ')
+        .replace(/\s+\n/g, '\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+}
+
+async function generateSingleGeminiAudioNarration(params: GenerateAudioParams): Promise<string> {
+    const dataUrl = await generateGeminiAudio({
+        ...params,
+    });
+
+    if (params.disableLeveling) return dataUrl;
+
+    const base64 = dataUrl.split(',')[1];
+    if (!base64) return dataUrl;
+
+    const wavBytes = base64ToUint8Array(base64);
+    const pcmRaw = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
+    const before = measurePcmLoudness(pcmRaw);
+    const leveledPcm = normalizeFinalPeak(pcmRaw);
+    const after = measurePcmLoudness(leveledPcm);
+
+    console.log(
+        `[Gemini TTS][DIAG] SINGLE PASS | ${params.text.length} chars | ${after.seconds}s | ` +
+        `quarters before: ${before.quartersDb.join(' -> ')} | quarters after: ${after.quartersDb.join(' -> ')}`
+    );
+
+    const wavBase64 = uint8ArrayToBase64(createWavFromPcm16(leveledPcm, 24000, 1));
+    return `data:audio/wav;base64,${wavBase64}`;
 }
 
 /**
@@ -315,55 +390,407 @@ function estimateSpeakingRate(text: string, targetDurationMinutes: number): numb
     return Math.min(1.35, Math.max(0.9, rate));
 }
 
+/** Maps the internal emotion keyword to a natural pt-BR tone description. */
+const EMOTION_PT: Record<NonNullable<GenerateAudioParams['emotion']>, string> = {
+    cheerfully: 'claro, alegre e acolhedor, sem gritar',
+    sadly: 'claro, sensível e acolhedor, sem baixar a voz',
+    excitedly: 'claro, animado e acolhedor, sem gritar',
+    calmly: 'claro, calmo e acolhedor, sem sussurrar',
+    mysteriously: 'claro e envolvente, sem sussurrar e sem voz baixa',
+    warmly: 'claro, caloroso e acolhedor',
+};
+
+function getCleanNarrationEmotion(emotion: GenerateAudioParams['emotion']): NonNullable<GenerateAudioParams['emotion']> {
+    // Full-story narration should match the successful audio test preset:
+    // clear audiobook voice. Dramatic/mysterious/calm tones make Gemini TTS
+    // drift into boxed, breathy or whispered delivery on longer stories.
+    if (emotion === 'cheerfully' || emotion === 'excitedly') return emotion;
+    return 'warmly';
+}
+
+/**
+ * Builds the style preamble (Director's Notes) sent before the transcript.
+ *
+ * Follows Google's recommended Gemini-TTS prompt structure (Audio Profile →
+ * Director's Notes → Transcript). The key directive forbids volume drops even
+ * when the story text itself describes whispering/quiet moments — because the
+ * model is steered by the MEANING of the text and will otherwise lower its
+ * voice on its own, which is what caused the "whispering in the middle".
+ */
 function buildGeminiNarrationPrompt(
     text: string,
     emotion: GenerateAudioParams['emotion'],
-    targetDurationMinutes?: number
+    targetDurationMinutes?: number,
+    voiceName?: string
 ): string {
-    if (!targetDurationMinutes || targetDurationMinutes <= 0) {
-        return `Narre em Português do Brasil com um tom ${emotion}. Não adicione palavras extras.`;
+    const cleanEmotion = getCleanNarrationEmotion(emotion);
+    const tom = EMOTION_PT[cleanEmotion] ?? 'claro, caloroso e acolhedor';
+    const nome = voiceName ? ` chamado(a) ${voiceName}` : '';
+
+    let pacing = 'Ritmo natural e estável.';
+    if (targetDurationMinutes && targetDurationMinutes > 0) {
+        const words = countWords(text);
+        const targetWpm = Math.round(words / targetDurationMinutes);
+        const boundedWpm = Math.min(185, Math.max(115, targetWpm));
+        pacing = `Ritmo natural e estável, em torno de ${boundedWpm} palavras por minuto.`;
     }
 
-    const words = countWords(text);
-    const targetWpm = Math.round(words / targetDurationMinutes);
-    const boundedWpm = Math.min(185, Math.max(115, targetWpm));
+    return `Synthesize only the transcript below in Portuguese from Brazil.
+Voice profile: one clear professional narrator, open tone, steady projection, natural brightness, consistent timbre.
+Delivery: children's story narration for video, friendly and expressive, with stable speaking volume.
+Dialogue must stay in the same narrator voice and same timbre as the surrounding narration.
+${pacing}
 
-    return `Narre em Português do Brasil com um tom ${emotion}.
-Fale naturalmente mas mantenha o ritmo em cerca de ${boundedWpm} palavras por minuto (minutos alvo: ${targetDurationMinutes}).
-Não adicione ou remova conteúdo. Leia apenas o texto fornecido.`;
+Transcript:`;
 }
 
 /**
  * Split text into chunks that fit within Gemini TTS limits
- * Tries to split on sentence boundaries (. ! ?) to avoid cutting words
+ * Tries to split on sentence boundaries (. ! ?) to avoid cutting words.
+ *
+ * Os blocos são BALANCEADOS (todos com tamanho parecido) em vez de "encher até o
+ * limite e sobrar o resto". Um bloco final curto sai com timbre/volume
+ * nitidamente diferentes — é o que fazia "a voz mudar no fim". Mirando todos os
+ * blocos no mesmo tamanho, cada trecho fica no mesmo registro/duração.
  */
 function splitTextIntoChunks(text: string, maxChunkSize: number = 4000): string[] {
-    if (text.length <= maxChunkSize) return [text];
+    const trimmed = (text || '').trim();
+    if (trimmed.length <= maxChunkSize) return [trimmed];
+
+    // Quantos blocos precisamos e o tamanho-alvo para que fiquem EQUILIBRADOS
+    // (ex.: 3100 chars → 3 blocos de ~1034, e não 1500 + 1500 + 100).
+    const numChunks = Math.ceil(trimmed.length / maxChunkSize);
+    const targetSize = Math.ceil(trimmed.length / numChunks);
 
     const chunks: string[] = [];
     let currentChunk = '';
 
     // Split by sentence endings first
-    const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+    const sentences = trimmed.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [trimmed];
 
     for (const sentence of sentences) {
-        if ((currentChunk + sentence).length > maxChunkSize) {
-            if (currentChunk) chunks.push(currentChunk.trim());
+        // Fecha o bloco atual quando atinge o alvo balanceado (e nunca passa do
+        // maxChunkSize), começando o próximo na fronteira de frase.
+        if (currentChunk &&
+            (currentChunk.length + sentence.length > maxChunkSize ||
+             currentChunk.length >= targetSize)) {
+            chunks.push(currentChunk.trim());
             currentChunk = sentence;
         } else {
             currentChunk += sentence;
         }
     }
-    if (currentChunk) chunks.push(currentChunk.trim());
+    if (currentChunk.trim()) chunks.push(currentChunk.trim());
 
     return chunks;
+}
+
+/**
+ * Concatena blocos PCM16 com um CROSSFADE curto (~25 ms) de potência constante na
+ * emenda, em vez de um corte seco. Como cada bloco é uma geração independente
+ * (timbre levemente diferente), o corte seco deixa a troca de voz audível como um
+ * "clique"/degrau. O crossfade suaviza a emenda — não elimina a diferença de
+ * timbre (impossível com TTS stateless), mas tira o salto abrupto que faz soar
+ * como "duas vozes". A janela é curta e cai na pausa entre frases (os blocos são
+ * cortados em fim de frase), então não embola as palavras.
+ */
+function concatPcmWithCrossfade(buffers: Uint8Array[], sampleRate: number = 24000, fadeMs: number = 25): Uint8Array {
+    const views = buffers
+        .map(b => new Int16Array(b.buffer, b.byteOffset, Math.floor(b.byteLength / 2)))
+        .filter(v => v.length > 0);
+
+    if (views.length === 0) return new Uint8Array(0);
+
+    const fadeSamples = Math.max(0, Math.floor((sampleRate * fadeMs) / 1000));
+
+    // Comprimento final: soma dos blocos menos a sobreposição de cada emenda.
+    let total = views[0].length;
+    for (let i = 1; i < views.length; i++) {
+        const f = Math.min(fadeSamples, views[i].length, views[i - 1].length);
+        total += views[i].length - f;
+    }
+
+    const out = new Int16Array(total);
+    out.set(views[0], 0);
+    let pos = views[0].length; // próxima posição de escrita
+
+    for (let i = 1; i < views.length; i++) {
+        const cur = views[i];
+        const f = Math.min(fadeSamples, cur.length, views[i - 1].length);
+        const start = pos - f; // região sobreposta com o fim do bloco anterior
+
+        for (let j = 0; j < f; j++) {
+            const t = (j + 1) / (f + 1);
+            // Crossfade LINEAR (ganho somado = 1): na emenda em fim de frase o sinal
+            // é quase silêncio, então não há "swell"/clipping; mais seguro que
+            // potência constante, que daria +3 dB se os dois blocos coincidirem.
+            const mixed = out[start + j] * (1 - t) + cur[j] * t;
+            out[start + j] = Math.max(-32768, Math.min(32767, Math.round(mixed)));
+        }
+
+        out.set(cur.subarray(f), pos);
+        pos += cur.length - f;
+    }
+
+    return new Uint8Array(out.buffer, 0, pos * 2);
+}
+
+/**
+ * DIAGNOSTIC: measure loudness of a PCM16 buffer.
+ * Returns overall RMS/peak in dBFS plus the RMS of each quarter of the buffer,
+ * so we can see whether the volume drops BETWEEN chunks or WITHIN a chunk.
+ */
+function measurePcmLoudness(pcm: Uint8Array): { rmsDb: number; peakDb: number; quartersDb: number[]; seconds: number } {
+    const samples = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2));
+    const n = samples.length;
+    const toDb = (x: number) => (x <= 0 ? -Infinity : Math.round(20 * Math.log10(x) * 10) / 10);
+
+    let sumSq = 0;
+    let peak = 0;
+    for (let i = 0; i < n; i++) {
+        const s = samples[i] / 32768;
+        sumSq += s * s;
+        const a = Math.abs(s);
+        if (a > peak) peak = a;
+    }
+    const rms = n ? Math.sqrt(sumSq / n) : 0;
+
+    const quarters: number[] = [];
+    const q = Math.floor(n / 4);
+    for (let k = 0; k < 4; k++) {
+        const start = k * q;
+        const end = k === 3 ? n : start + q;
+        let qs = 0;
+        for (let i = start; i < end; i++) {
+            const s = samples[i] / 32768;
+            qs += s * s;
+        }
+        quarters.push(toDb(end > start ? Math.sqrt(qs / (end - start)) : 0));
+    }
+
+    return { rmsDb: toDb(rms), peakDb: toDb(peak), quartersDb: quarters, seconds: Math.round((n / 24000) * 10) / 10 };
+}
+
+/**
+ * Normaliza UM bloco PCM16 para um RMS-alvo comum, para que TODOS os blocos
+ * tenham o MESMO volume médio ANTES de serem concatenados. Corrige diretamente
+ * o defeito de "partes baixas": quando o Gemini gera um bloco inteiro mais baixo
+ * que os outros (cada chunk é uma geração independente).
+ *
+ * Usa RMS (energia média), NÃO pico — assim um pico isolado alto não rebaixa o
+ * corpo inteiro do bloco (que era o problema da antiga normalização por pico).
+ *
+ * @param pcm - PCM16 mono (little-endian)
+ * @param targetRms - alvo de volume médio (linear)
+ * @param maxGain - ganho máximo (evita amplificar demais blocos quase mudos)
+ */
+function normalizeChunkRms(pcm: Uint8Array, targetRms: number = TARGET_RMS, maxGain: number = 4.0): Uint8Array {
+    const samples = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2));
+    const n = samples.length;
+    if (n === 0) return pcm;
+
+    let sumSq = 0;
+    for (let i = 0; i < n; i++) {
+        const s = samples[i] / 32768;
+        sumSq += s * s;
+    }
+    const rms = Math.sqrt(sumSq / n);
+    if (rms < 0.0005) return pcm; // bloco efetivamente silencioso — não amplifica ruído
+
+    const gain = Math.min(maxGain, Math.max(0.25, targetRms / rms));
+    const ceiling = 0.97;
+    const output = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+        let v = (samples[i] / 32768) * gain;
+        if (v > ceiling) {
+            v = ceiling + (1 - ceiling) * Math.tanh((v - ceiling) / (1 - ceiling));
+        } else if (v < -ceiling) {
+            v = -ceiling + (1 - ceiling) * Math.tanh((v + ceiling) / (1 - ceiling));
+        }
+        output[i] = Math.max(-32768, Math.min(32767, Math.round(v * 32768)));
+    }
+    return new Uint8Array(output.buffer);
+}
+
+/**
+ * Loudness leveler — achata a oscilação de volume ("começa normal, vira sussurro,
+ * depois aumenta, depois volta ao normal") que vem da geração do Gemini.
+ *
+ * Reescrito (2026-06-15) para ganho CENTRADO / fase-zero, eliminando o LAG do
+ * integrador antigo. O modelo antigo (integrador exponencial) reagia ao sussurro
+ * com ~1,5s de atraso: o começo do sussurro tocava baixo e o ganho só subia
+ * depois ("depois aumenta") — exatamente o defeito relatado. Aqui:
+ *
+ *   1. mede o RMS em frames de 20ms;
+ *   2. calcula o ganho-alvo por frame (targetRms / rmsDoFrame), limitado;
+ *   3. nos frames de PAUSA (abaixo do piso de ruído, detectado por percentil)
+ *      herda o ganho da fala vizinha — não amplifica respiração/ruído;
+ *   4. SUAVIZA a curva de GANHO com média móvel CENTRADA (~1,2s) → o ganho se
+ *      move devagar (sem pumping) mas é simétrico no tempo (sem lag), então
+ *      cobre o sussurro INTEIRO, do início ao fim;
+ *   5. aplica por amostra com interpolação + limitador soft.
+ *
+ * @param pcm - PCM16 mono (little-endian)
+ * @param sampleRate - 24000 (Gemini TTS)
+ * @param targetRms - alvo de volume (~0.12 ≈ -18 dBFS)
+ */
+function levelLoudnessSlow(pcm: Uint8Array, sampleRate: number = 24000, targetRms: number = TARGET_RMS): Uint8Array {
+    const samples = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2));
+    const n = samples.length;
+    if (n === 0) return pcm;
+
+    let globalSq = 0;
+    for (let i = 0; i < n; i++) {
+        const s = samples[i] / 32768;
+        globalSq += s * s;
+    }
+    const globalRms = Math.sqrt(globalSq / n);
+    if (globalRms < 0.0005) return pcm; // efetivamente silencioso
+
+    // 1) ENERGIA (mean-square) por frame de 20ms. Trabalhar com energia (e não com
+    //    "ganho por frame") é o correto perceptualmente: a vogal forte domina a
+    //    sonoridade da janela, como o ouvido percebe.
+    const hop = Math.max(1, Math.floor(sampleRate * 0.02));
+    const numFrames = Math.ceil(n / hop);
+    const ms = new Float64Array(numFrames);
+    for (let f = 0; f < numFrames; f++) {
+        const start = f * hop;
+        const end = Math.min(n, start + hop);
+        let sq = 0;
+        for (let i = start; i < end; i++) {
+            const s = samples[i] / 32768;
+            sq += s * s;
+        }
+        ms[f] = sq / Math.max(1, end - start);
+    }
+
+    // 2) Suaviza a ENERGIA com média móvel CENTRADA (~1,0s, fase-zero) via soma de
+    //    prefixos. Centrada = sem lag (o sussurro inteiro é coberto, do início ao
+    //    fim); janela de ~1s = devagar o bastante para não causar pumping.
+    const half = Math.max(1, Math.round(0.5 / 0.02)); // ±0,5s → janela ~1,0s
+    const prefix = new Float64Array(numFrames + 1);
+    for (let f = 0; f < numFrames; f++) prefix[f + 1] = prefix[f] + ms[f];
+    const smoothMs = new Float64Array(numFrames);
+    for (let f = 0; f < numFrames; f++) {
+        const a = Math.max(0, f - half);
+        const b = Math.min(numFrames - 1, f + half);
+        smoothMs[f] = (prefix[b + 1] - prefix[a]) / (b - a + 1);
+    }
+
+    // Piso de ruído (RMS) ligado ao nível global: abaixo dele é pausa/silêncio e
+    // mantém ganho unitário (não amplifica respiração/chiado). Bem abaixo do nível
+    // de um sussurro real, para que o sussurro AINDA seja levantado ao alvo.
+    const noiseFloor = Math.max(0.0025, Math.min(0.01, globalRms * 0.04));
+    const maxGain = 5.0;  // +14 dB — levanta fala baixa sem esmagar a dinâmica
+    const minGain = 0.35; // -9 dB — segura trechos altos demais
+
+    // 3) Ganho por frame a partir da ENERGIA suavizada; mistura para ganho unitário
+    //    no silêncio (smoothstep) para não amplificar ruído de fundo nas pausas.
+    const gain = new Float32Array(numFrames);
+    for (let f = 0; f < numFrames; f++) {
+        const sRms = Math.sqrt(smoothMs[f]);
+        const g = Math.min(maxGain, Math.max(minGain, targetRms / Math.max(sRms, 1e-6)));
+        const t = Math.max(0, Math.min(1, (sRms - noiseFloor) / noiseFloor)); // 0 no piso, 1 em 2×piso
+        const w = t * t * (3 - 2 * t); // smoothstep
+        gain[f] = w * g + (1 - w) * 1.0;
+    }
+
+    // 4) Aplica por amostra, interpolando o ganho entre frames + limitador soft.
+    const ceiling = 0.86;
+    const output = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+        const fp = i / hop;
+        const f0 = Math.min(numFrames - 1, Math.floor(fp));
+        const f1 = Math.min(numFrames - 1, f0 + 1);
+        const frac = fp - f0;
+        const g = gain[f0] * (1 - frac) + gain[f1] * frac;
+
+        let v = (samples[i] / 32768) * g;
+        if (v > ceiling) {
+            v = ceiling + (1 - ceiling) * Math.tanh((v - ceiling) / (1 - ceiling));
+        } else if (v < -ceiling) {
+            v = -ceiling + (1 - ceiling) * Math.tanh((v + ceiling) / (1 - ceiling));
+        }
+        output[i] = Math.max(-32768, Math.min(32767, Math.round(v * 32768)));
+    }
+
+    return new Uint8Array(output.buffer);
+}
+
+function liftQuietSpeech(pcm: Uint8Array, sampleRate: number = 24000, targetRms: number = TARGET_RMS): Uint8Array {
+    const samples = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2));
+    const n = samples.length;
+    if (n === 0) return pcm;
+
+    const frameSize = Math.max(1, Math.floor(sampleRate * 0.12));
+    const frames = Math.ceil(n / frameSize);
+    const gains = new Float32Array(frames);
+    const speechFloor = targetRms * 0.18;
+    const desiredMin = targetRms * 0.58;
+
+    for (let f = 0; f < frames; f++) {
+        const start = f * frameSize;
+        const end = Math.min(n, start + frameSize);
+        let sq = 0;
+        let peak = 0;
+        for (let i = start; i < end; i++) {
+            const s = samples[i] / 32768;
+            sq += s * s;
+            peak = Math.max(peak, Math.abs(s));
+        }
+        const rms = Math.sqrt(sq / Math.max(1, end - start));
+        const isSpeech = rms > speechFloor || peak > targetRms * 0.45;
+        gains[f] = isSpeech && rms < desiredMin
+            ? Math.min(2.8, desiredMin / Math.max(rms, 1e-6))
+            : 1.0;
+    }
+
+    const output = new Int16Array(n);
+    const ceiling = 0.84;
+    for (let i = 0; i < n; i++) {
+        const fp = i / frameSize;
+        const f0 = Math.min(frames - 1, Math.floor(fp));
+        const f1 = Math.min(frames - 1, f0 + 1);
+        const frac = fp - f0;
+        const gain = gains[f0] * (1 - frac) + gains[f1] * frac;
+
+        let v = (samples[i] / 32768) * gain;
+        if (v > ceiling) {
+            v = ceiling + (1 - ceiling) * Math.tanh((v - ceiling) / (1 - ceiling));
+        } else if (v < -ceiling) {
+            v = -ceiling + (1 - ceiling) * Math.tanh((v + ceiling) / (1 - ceiling));
+        }
+        output[i] = Math.max(-32768, Math.min(32767, Math.round(v * 32768)));
+    }
+
+    return new Uint8Array(output.buffer);
+}
+
+function normalizeFinalPeak(pcm: Uint8Array, maxPeak: number = 0.82): Uint8Array {
+    const samples = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2));
+    const n = samples.length;
+    if (n === 0) return pcm;
+
+    let peak = 0;
+    for (let i = 0; i < n; i++) {
+        peak = Math.max(peak, Math.abs(samples[i] / 32768));
+    }
+    if (peak <= maxPeak) return pcm;
+
+    const gain = maxPeak / peak;
+    const output = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+        output[i] = Math.max(-32768, Math.min(32767, Math.round(samples[i] * gain)));
+    }
+    return new Uint8Array(output.buffer);
 }
 
 /**
  * Generate audio for long text by chunking and concatenating
  */
 export async function generateLongAudioNarration(params: GenerateAudioParams): Promise<string> {
-    const chunks = splitTextIntoChunks(params.text, 1000); // chunk size of 1000 characters
+    const chunkSize = params.maxChunkChars ?? MAX_TTS_CHUNK_CHARS;
+    const chunks = splitTextIntoChunks(params.text, chunkSize); // smaller chunks stay under the drift threshold (docs) → no whispering mid-passage
     console.log(`[Gemini TTS] Text too long (${params.text.length} chars), split into ${chunks.length} chunks`);
 
     const pcmBuffers: Uint8Array[] = [];
@@ -377,10 +804,11 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
             : undefined;
 
         // Generate audio for each chunk using Gemini directly
+        // NOTE: Do NOT pass a per-chunk duration target — it causes volume/speed inconsistency
         const dataUrl = await generateGeminiAudio({
             ...params,
             text: chunks[i],
-            targetDurationMinutes: chunkDurationTarget
+            targetDurationMinutes: undefined  // Keep same rate across all chunks
         });
 
         // Extract base64 data (remove "data:audio/wav;base64," prefix)
@@ -388,26 +816,41 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
         const wavBytes = base64ToUint8Array(base64);
         
         // Slices off the 44-byte WAV header, leaving raw PCM
-        if (wavBytes.length > 44) {
-            pcmBuffers.push(wavBytes.subarray(44));
-        } else {
-            pcmBuffers.push(wavBytes);
-        }
+        const chunkPcmRaw = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
+
+        const chunkPcm = chunkPcmRaw;
+        pcmBuffers.push(chunkPcm);
+
+        // DIAGNOSTIC: log this chunk's loudness (antes → depois da normalização)
+        // para localizar qualquer sussurro/queda de volume.
+        const mRaw = measurePcmLoudness(chunkPcmRaw);
+        const m = measurePcmLoudness(chunkPcm);
+        console.log(
+            `[Gemini TTS][DIAG] chunk ${i + 1}/${chunks.length} | ${chunks[i].length} chars | ${m.seconds}s | ` +
+            `RMS ${mRaw.rmsDb} → ${m.rmsDb} dBFS | peak ${m.peakDb} dBFS | quartis(RMS dBFS): ${m.quartersDb.join(' → ')}`
+        );
     }
 
-    // Concatenate all PCM buffers
-    let totalLength = 0;
-    for (const buf of pcmBuffers) totalLength += buf.length;
-    
-    const concatenatedPcm = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const buf of pcmBuffers) {
-        concatenatedPcm.set(buf, offset);
-        offset += buf.length;
-    }
+    // Concatena os blocos com um crossfade curto na emenda (em vez de corte seco),
+    // suavizando a troca de voz entre blocos (cada bloco é uma geração stateless
+    // com timbre levemente diferente → o corte seco soa como "duas vozes").
+    const concatenatedPcm = concatPcmWithCrossfade(pcmBuffers, 24000, 25);
+
+    // Slow loudness leveler on the WHOLE audio at once — evens out the slow
+    // volume arc ("normal → quiet → loud") that comes from Gemini, without
+    // pumping (long window) and without clipping (soft limiter).
+    const before = measurePcmLoudness(concatenatedPcm);
+    const leveledPcm = params.disableLeveling
+        ? concatenatedPcm
+        : normalizeFinalPeak(concatenatedPcm);
+    const after = measurePcmLoudness(leveledPcm);
+    console.log(
+        `[Gemini TTS][DIAG] NIVELADO(${params.disableLeveling ? 'OFF' : 'ON'}) | quartis ANTES: ${before.quartersDb.join(' → ')} | ` +
+        `quartis DEPOIS: ${after.quartersDb.join(' → ')}`
+    );
 
     // Create single valid WAV with unified header (24000Hz, 1 channel, 16-bit PCM)
-    const wavBytes = createWavFromPcm16(concatenatedPcm, 24000, 1);
+    const wavBytes = createWavFromPcm16(leveledPcm, 24000, 1);
     const wavBase64 = uint8ArrayToBase64(wavBytes);
     return `data:audio/wav;base64,${wavBase64}`;
 }

@@ -14,7 +14,7 @@ interface Env {
 }
 
 // Modelos TTS disponíveis (em ordem de preferência)
-const TTS_MODELS = ['gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-tts', 'gemini-2.5-pro-tts', 'gemini-2.5-flash-lite-preview-tts'] as const;
+const TTS_MODELS = ['gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'] as const;
 
 /**
  * Detecta se GCP_CREDENTIALS_JSON tem credenciais válidas (Service Account ou Authorized User)
@@ -44,7 +44,13 @@ function addWavHeaders(base64Raw: string, sampleRate: number): Uint8Array {
   const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
   const blockAlign = numChannels * (bitsPerSample / 8);
 
-  const buffer = new ArrayBuffer(44 + dataBytes.length);
+  // Mantém o PCM exatamente como vem do Gemini — SEM normalização.
+  // (A antiga normalização por pico era feita em cada bloco separadamente, o que
+  // deixava o volume desigual entre blocos: um bloco com um pico isolado alto
+  // tinha o corpo inteiro rebaixado e soava "sussurrado" a partir do meio.)
+  const pcmBytes = dataBytes;
+
+  const buffer = new ArrayBuffer(44 + pcmBytes.length);
   const view = new DataView(buffer);
 
   const writeString = (offset: number, str: string) => {
@@ -52,7 +58,7 @@ function addWavHeaders(base64Raw: string, sampleRate: number): Uint8Array {
   };
 
   writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataBytes.length, true);
+  view.setUint32(4, 36 + pcmBytes.length, true);
   writeString(8, 'WAVE');
   writeString(12, 'fmt ');
   view.setUint32(16, 16, true);
@@ -63,8 +69,8 @@ function addWavHeaders(base64Raw: string, sampleRate: number): Uint8Array {
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitsPerSample, true);
   writeString(36, 'data');
-  view.setUint32(40, dataBytes.length, true);
-  new Uint8Array(buffer, 44).set(dataBytes);
+  view.setUint32(40, pcmBytes.length, true);
+  new Uint8Array(buffer, 44).set(pcmBytes);
 
   return new Uint8Array(buffer);
 }
@@ -123,23 +129,23 @@ async function generateViaVertexAI(
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { text, voice, styleInstruction, temperature } = (await request.json()) as any;
+    const { text, voice, styleInstruction } = (await request.json()) as any;
 
     if (!text) {
       return Response.json({ error: 'O campo "text" é obrigatório' }, { status: 400 });
     }
 
+    const selectedVoice = typeof voice === 'string' && voice.trim() ? voice.trim() : 'Kore';
+
     const prompt = styleInstruction ? styleInstruction + '\n\n' + text : text;
 
     const payload = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generation_config: {
-        temperature: temperature ?? 1.0,
-        response_modalities: ['AUDIO'],
-        speech_config: {
-          language_code: 'pt-BR',
-          voice_config: {
-            prebuilt_voice_config: { voice_name: voice || 'Kore' },
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: selectedVoice },
           },
         },
       },

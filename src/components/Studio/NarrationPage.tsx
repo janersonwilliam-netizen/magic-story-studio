@@ -8,8 +8,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { StoryConfig, StoryWithNarration } from '../../types/studio';
 import { generateStoryWithGemini } from '../../services/gemini';
-import { generateAudioNarration, GEMINI_VOICES } from '../../services/tts';
-import { Loader2, Check, Sparkles, Volume2 } from 'lucide-react';
+import { generateLongAudioNarration, GEMINI_VOICES } from '../../services/tts';
+import { Loader2, Check, Sparkles, Volume2, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -24,10 +24,10 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
     const { user } = useAuth();
     const [generating, setGenerating] = useState(!existingStory?.storyText);
     const [storyText, setStoryText] = useState(existingStory?.storyText || '');
+    const [rawScenes, setRawScenes] = useState<any[]>(existingStory?.rawScenes || []);
     const [error, setError] = useState('');
     const [voiceName, setVoiceName] = useState(existingStory?.voiceName || 'Kore');
     const [emotion, setEmotion] = useState(existingStory?.emotion || 'warmly');
-    const [temperature, setTemperature] = useState(1.0);
     const [generatingAudio, setGeneratingAudio] = useState(false);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState(existingStory?.audioUrl || '');
 
@@ -79,6 +79,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
             });
 
             setStoryText(result.story_text);
+            setRawScenes(result.rawScenes || []);
             setGenerating(false);
 
         } catch (err: any) {
@@ -96,13 +97,14 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
 
         try {
             console.log('[NarrationPage] Generating audio preview with voice:', voiceName, 'emotion:', emotion);
+            const narrationText = storyText.replace(/\\n/g, '\n');
 
-            const audioUrl = await generateAudioNarration({
-                text: storyText.replace(/\\n/g, '\n'),
+            const audioUrl = await generateLongAudioNarration({
+                text: narrationText,
+                voiceName,
                 emotion: emotion as any,
-                voiceName: voiceName,
-                targetDurationMinutes: config.duration,
-                temperature: temperature
+                maxChunkChars: 900,
+                disableLeveling: false
             });
 
             setAudioPreviewUrl(audioUrl);
@@ -115,6 +117,23 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
         }
     };
 
+    const handleDownloadAudio = () => {
+        if (!audioPreviewUrl) return;
+        const safeTitle = (config.title || 'narracao')
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .replace(/[^a-zA-Z0-9 ]/g, '')
+            .trim()
+            .replace(/\s+/g, '_')
+            .substring(0, 40) || 'narracao';
+        const link = document.createElement('a');
+        link.href = audioPreviewUrl;
+        link.download = `${safeTitle}_narracao.wav`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const handleConfirm = () => {
         if (storyText) {
             const storyWithNarration: StoryWithNarration = {
@@ -122,6 +141,7 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                 storyId: existingStory?.storyId || `story-${Date.now()}`,
                 storyText: storyText,
                 narrationText: storyText,
+                rawScenes: rawScenes,
                 voiceName: voiceName,
                 emotion: emotion,
                 audioUrl: audioPreviewUrl
@@ -341,7 +361,17 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                             {/* Audio Player */}
                             {audioPreviewUrl && (
                                 <div className="mt-4 p-4 bg-card rounded-lg border-2 border-primary/20">
-                                    <p className="text-sm font-semibold text-muted-foreground mb-2">Preview do Áudio:</p>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-sm font-semibold text-muted-foreground">Preview do Áudio:</p>
+                                        <button
+                                            onClick={handleDownloadAudio}
+                                            className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors text-sm font-semibold"
+                                            title="Baixar áudio (.wav)"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Baixar Áudio
+                                        </button>
+                                    </div>
                                     <audio controls className="w-full" src={audioPreviewUrl} />
                                 </div>
                             )}
