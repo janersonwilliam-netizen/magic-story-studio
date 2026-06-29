@@ -15,6 +15,9 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
     const [thumbnailData, setThumbnailData] = useState<PalitoThumbnailData | null>(null);
     const [textRed, setTextRed] = useState('');
     const [textBlack, setTextBlack] = useState('');
+    const [object1, setObject1] = useState('');
+    const [object2, setObject2] = useState('');
+    const [characterAction, setCharacterAction] = useState('');
     const [loadingData, setLoadingData] = useState(false);
     const [loadingImage, setLoadingImage] = useState(false);
     const [error, setError] = useState('');
@@ -27,6 +30,9 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
             setThumbnailData(data);
             setTextRed(data.textRed);
             setTextBlack(data.textBlack);
+            setObject1(data.object1);
+            setObject2(data.object2);
+            setCharacterAction(data.characterAction);
         } catch (e: any) {
             setError(e.message || 'Erro ao preparar capa. Tente novamente.');
         } finally {
@@ -40,9 +46,11 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
         setError('');
         try {
             const data: PalitoThumbnailData = {
-                ...thumbnailData,
                 textRed: textRed.toUpperCase(),
                 textBlack: textBlack.toUpperCase(),
+                object1,
+                object2,
+                characterAction,
             };
             const prompt = buildPalitoThumbnailPrompt(data);
             const url = await generateImageWithNanoBanana(prompt);
@@ -58,6 +66,9 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
         setThumbnailData(null);
         setTextRed('');
         setTextBlack('');
+        setObject1('');
+        setObject2('');
+        setCharacterAction('');
         setThumbnailUrl('');
     };
 
@@ -134,22 +145,44 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
                         </div>
                     </div>
 
-                    {/* Objects info */}
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="bg-[#1a1a1c] rounded-lg p-3">
-                            <p className="text-gray-500 mb-1">Objeto principal</p>
-                            <p className="text-gray-300 italic">{thumbnailData.object1}</p>
+                    {/* Objects — editable */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-400">Objeto principal <span className="text-gray-600">(em inglês)</span></label>
+                            <input
+                                type="text"
+                                value={object1}
+                                onChange={e => setObject1(e.target.value)}
+                                className="w-full bg-[#1a1a1c] border border-border text-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="ex: ancient campfire at night under stars"
+                            />
                         </div>
-                        <div className="bg-[#1a1a1c] rounded-lg p-3">
-                            <p className="text-gray-500 mb-1">Objeto secundário</p>
-                            <p className="text-gray-300 italic">{thumbnailData.object2}</p>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-400">Objeto secundário <span className="text-gray-600">(em inglês)</span></label>
+                            <input
+                                type="text"
+                                value={object2}
+                                onChange={e => setObject2(e.target.value)}
+                                className="w-full bg-[#1a1a1c] border border-border text-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="ex: crescent moon with stars"
+                            />
                         </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-400">Ação do personagem <span className="text-gray-600">(em inglês)</span></label>
+                        <input
+                            type="text"
+                            value={characterAction}
+                            onChange={e => setCharacterAction(e.target.value)}
+                            className="w-full bg-[#1a1a1c] border border-border text-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                            placeholder="ex: pointing at the fire with one arm extended, mouth open in shock"
+                        />
                     </div>
 
                     <div className="flex gap-2">
                         <button
                             onClick={handleGenerate}
-                            disabled={loadingImage || !textRed.trim() || !textBlack.trim()}
+                            disabled={loadingImage || !textRed.trim() || !textBlack.trim() || !object1.trim()}
                             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
                         >
                             {loadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}

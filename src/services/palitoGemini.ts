@@ -206,19 +206,33 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações):
   "characterAction": "ação do personagem em inglês — ex: pointing at object1 with one arm extended and jaw dropped open, eyes wide and arms raised"
 }`;
 
-    const raw = await callVertexText(directionPrompt, { temperature: 0.7, maxOutputTokens: 300 });
-    try {
-        return JSON.parse(raw.replace(/```json|```/g, '').trim()) as PalitoThumbnailData;
-    } catch {
-        const words = title.toUpperCase().split(' ');
-        return {
-            textRed: words.slice(0, 2).join(' '),
-            textBlack: words.slice(2).join(' ') || '!',
-            object1: 'large golden trophy cup',
-            object2: 'pile of gold coins',
-            characterAction: 'pointing at the trophy with one arm extended, mouth open in shock',
-        };
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const raw = await callVertexText(directionPrompt, { temperature: 0.5 + attempt * 0.1, maxOutputTokens: 600 });
+        try {
+            const clean = raw.replace(/```json|```/g, '').trim();
+            // Extract JSON object even if there's trailing text
+            const match = clean.match(/\{[\s\S]*\}/);
+            if (match) return JSON.parse(match[0]) as PalitoThumbnailData;
+        } catch {
+            console.warn(`[Thumbnail] JSON parse failed on attempt ${attempt + 1}, retrying...`);
+        }
     }
+    // Last resort fallback — at least derive objects from title keywords
+    const words = title.toUpperCase().split(' ');
+    const titleLower = title.toLowerCase();
+    const object1 = titleLower.includes('noite') ? 'ancient campfire with flames at night under stars'
+        : titleLower.includes('dinheiro') || titleLower.includes('milh') ? 'stack of dollar bills'
+        : titleLower.includes('cérebro') || titleLower.includes('intelig') ? 'large human brain'
+        : titleLower.includes('corpo') || titleLower.includes('saúde') ? 'human body diagram'
+        : titleLower.includes('espaço') || titleLower.includes('planet') ? 'planet earth from space'
+        : 'large question mark symbol';
+    return {
+        textRed: words.slice(0, 2).join(' '),
+        textBlack: words.slice(2).join(' ') || '!',
+        object1,
+        object2: 'large bold exclamation mark',
+        characterAction: 'pointing at object with one arm extended and jaw dropped open, eyes wide',
+    };
 }
 
 export function buildPalitoThumbnailPrompt(data: PalitoThumbnailData): string {
