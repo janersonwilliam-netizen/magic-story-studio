@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { handleSupabaseAuthError } from './supabaseErrors';
 
 const DB_NAME = 'MagicStoryStudioDB';
 const STORE_NAME = 'library_files';
@@ -84,6 +85,7 @@ export const storage = {
 
                     if (error) {
                         console.warn('[storage] Cloud select error:', error);
+                        await handleSupabaseAuthError(error);
                         return null;
                     }
                     return data;
@@ -167,6 +169,7 @@ export const storage = {
 
             if (uploadError) {
                 console.error('[storage] Upload error:', uploadError);
+                await handleSupabaseAuthError(uploadError);
                 throw uploadError;
             }
 
@@ -194,6 +197,7 @@ export const storage = {
 
             if (dbError) {
                 console.error('[storage] Database insert error:', dbError);
+                await handleSupabaseAuthError(dbError);
                 throw dbError;
             }
 
@@ -226,7 +230,10 @@ export const storage = {
                 .delete()
                 .eq('id', id);
 
-            if (tableError) throw tableError;
+            if (tableError) {
+                await handleSupabaseAuthError(tableError);
+                throw tableError;
+            }
 
         } catch (err) {
             console.warn('[storage] Cloud delete failed:', err);
@@ -251,7 +258,10 @@ export const storage = {
                 })
                 .eq('id', file.id);
 
-            if (dbError) throw dbError;
+            if (dbError) {
+                await handleSupabaseAuthError(dbError);
+                throw dbError;
+            }
 
         } catch (err) {
             console.error('[storage] Cloud update failed:', err);

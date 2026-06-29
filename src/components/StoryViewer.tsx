@@ -11,6 +11,7 @@ import { StepWizard, STORY_CREATION_STEPS } from './StepWizard';
 import JSZip from 'jszip';
 import { Timeline } from './Studio/Timeline';
 import { VideoPreview } from './Studio/VideoPreview';
+import { WaveformPlayer } from './Studio/WaveformPlayer';
 import { ExportVideoModal } from './ExportVideoModal';
 import type { TimelineClip } from '../types/studio';
 
@@ -512,9 +513,11 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
         if (!story?.story_text) return;
         try {
             setGeneratingFullAudio(true);
+            const narrationText = story.narration_text || story.story_text || '';
             const audioUrl = await generateLongAudioNarration({
-                text: story.narration_text || story.story_text,
-                targetDurationMinutes: story.duration || undefined
+                text: narrationText,
+                maxChunkChars: 900,
+                disableLeveling: false
             });
             await supabase.from('stories').update({ full_audio_url: audioUrl }).eq('id', storyId);
             setStory({ ...story, full_audio_url: audioUrl });
@@ -818,7 +821,13 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
                             <div className="space-y-4">
                                 <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                                     <p className="text-green-700 font-medium mb-3">✅ Narração gerada com sucesso!</p>
-                                    <audio controls src={story.full_audio_url} className="w-full" />
+                                    <WaveformPlayer
+                                        src={story.full_audio_url}
+                                        playedColor="#16a34a"
+                                        unplayedColor="rgba(0, 0, 0, 0.12)"
+                                        buttonClassName="bg-green-600 text-white hover:bg-green-700"
+                                        timeClassName="text-gray-500"
+                                    />
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <a href={story.full_audio_url} download={getAudioDownloadName()} className="text-sm text-[#FF0000] hover:underline flex items-center gap-1">

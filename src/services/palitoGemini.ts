@@ -1,0 +1,287 @@
+/**
+ * Gemini AI functions specific to the Histórias Palito module
+ */
+
+async function callVertexText(prompt: string, options: { temperature?: number; maxOutputTokens?: number } = {}): Promise<string> {
+    const response = await fetch('/api/generate-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            prompt,
+            temperature: options.temperature ?? 0.8,
+            maxOutputTokens: options.maxOutputTokens ?? 8192,
+        }),
+    });
+    const data = await response.json() as any;
+    if (!response.ok || data.error) throw new Error(data.error || `Erro HTTP ${response.status}`);
+    return data.text as string;
+}
+
+// ── Ideias virais ────────────────────────────────────────────────────────────
+
+export async function generatePalitoIdeas(tema?: string): Promise<string[]> {
+    const temaInstructions = tema
+        ? `O usuário informou o tema: "${tema}". Gere 10 ângulos DIFERENTES para abordar esse tema, usando os ângulos virais comprovados (pergunta direta, revelação surpreendente, reconfiguração de algo comum, fato histórico, explicação de como funciona, etc.). Todos os títulos devem girar em torno do assunto informado.`
+        : `Gere 10 ideias LIVRES dentro do nicho de curiosidades gerais — responde dúvidas do cotidiano, explica como as coisas funcionam, conta histórias de invenções, fatos surpreendentes, curiosidades sobre profissões, objetos, lugares, animais, eventos e fenômenos do dia a dia.`;
+
+    const prompt = `Você é um criador de conteúdo viral especializado em vídeos educativos doodle para YouTube.
+
+${temaInstructions}
+
+REGRAS:
+- Cada título deve despertar curiosidade genuína e ser impossível de ignorar no feed
+- Use ângulos como: "Como é feito/produzido ___?", "Por que você ___?", "Quanto ganha um ___?", "Quem inventou ___?", "O que acontece quando você ___?", "Você nunca percebeu que ___", "Como funciona ___?", "Fatos sobre ___ que vão te surpreender"
+- Nunca use títulos que soem como reportagem, opinião política ou entretenimento puro sem valor educativo
+- Todos os títulos em PORTUGUÊS BRASILEIRO
+- Menos de 70 caracteres cada
+
+Retorne APENAS um JSON válido neste formato exato, sem markdown, sem explicações:
+{"ideas": ["Título 1", "Título 2", "Título 3", "Título 4", "Título 5", "Título 6", "Título 7", "Título 8", "Título 9", "Título 10"]}`;
+
+    const raw = await callVertexText(prompt, { temperature: 0.9 });
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    return parsed.ideas as string[];
+}
+
+// ── Roteiro ──────────────────────────────────────────────────────────────────
+
+export async function generatePalitoScript(title: string): Promise<string> {
+    const prompt = `Você é um roteirista profissional de vídeos educativos para YouTube.
+
+TÍTULO DO VÍDEO: "${title}"
+
+Escreva o roteiro COMPLETO de narração com EXATAMENTE os 5 blocos abaixo, na ordem indicada, sem pular nenhum. O texto total deve ter entre 750 e 870 palavras.
+
+---
+BLOCO 1 — GANCHO
+Tamanho: 70 palavras exatas.
+Abra com uma pergunta ou situação do cotidiano impossível de ignorar. A última frase deve criar suspense para o que vem a seguir.
+
+---
+BLOCO 2 — CONTEXTO
+Tamanho: 140 palavras exatas.
+Apresente o cenário completo com dados, números e história de fundo. Explique a dimensão real do tema.
+
+---
+BLOCO 3 — EXPLICAÇÃO DETALHADA
+Tamanho: 420 palavras exatas.
+Este é o coração do vídeo. Desenvolva o tema em profundidade:
+- Explique os mecanismos e processos passo a passo
+- Cite pelo menos 2 pesquisadores ou estudos reais com nome e instituição, incorporados naturalmente
+- Revele detalhes que a maioria desconhece
+- Use exemplos concretos e comparações para facilitar a compreensão
+NÃO resuma — desenvolva cada ponto completamente.
+
+---
+BLOCO 4 — FATO SURPREENDENTE
+Tamanho: 110 palavras exatas.
+Revele uma informação contra-intuitiva ou chocante que o espectador vai querer contar para alguém agora.
+
+---
+BLOCO 5 — CONCLUSÃO
+Tamanho: 90 palavras exatas.
+Amarre tudo. Ecoe a primeira frase do roteiro de forma reconfigurada. Termine com algo que fique na memória.
+
+---
+REGRAS ABSOLUTAS:
+- Narração corrida — SEM títulos de bloco, SEM listas com traços, SEM indicações de cena, SEM parênteses no texto final
+- 2ª pessoa ("você", "seu cérebro") — nunca "nós" ou "eu"
+- Ritmo: Frase curta. Frase curta. Uma frase mais longa. Frase curta. Pergunta a cada 4–6 frases.
+- Todo termo técnico explicado imediatamente em linguagem simples
+- Português brasileiro
+
+Retorne APENAS o texto corrido dos 5 blocos unidos, sem nenhum marcador, título ou separador entre eles.`;
+
+    const raw = await callVertexText(prompt, { temperature: 0.7, maxOutputTokens: 6000 });
+
+    const CTA = '\n\nSe você gostou, não esquece de se inscrever no canal e deixar o seu like! E se ficou com alguma dúvida, deixa nos comentários: teremos o maior prazer em transformar a sua pergunta no próximo vídeo do Uma Dúvida!';
+
+    return raw.trim() + CTA;
+}
+
+// ── Prompts de cena ──────────────────────────────────────────────────────────
+
+const STYLE_ANCHOR = `Animação doodle 2D desenhada à mão, cores chapadas, contornos pretos grossos, linhas levemente imperfeitas de marcador, personagem principal com cabeça circular grande preenchida de branco, cabelo de 4 a 5 riscos diagonais finos espetados, olhos em dois pontos pretos, sobrancelhas retas finas levemente inclinadas para baixo no centro, camiseta cinza médio (#9E9E9E) e shorts cinza escuro (#555555), braços finos com punhos circulares brancos, pernas finas com pés ovais brancos, sombra oval achatada embaixo dos pés,`;
+
+const STYLE_CLOSE = `sem gradientes, sem sombras projetadas, sem sombreamento, sem texturas, sem fotorrealismo, sem 3D, sem estilo anime, proporção 16:9, estilo doodle de canal educativo no YouTube.`;
+
+const SCENE_BATCH_SIZE = 8;
+
+function repairAndParsePromptsJson(raw: string, expectedCount: number): string[] {
+    const clean = raw.replace(/```json|```/g, '').trim();
+
+    // Try full parse first
+    try {
+        const parsed = JSON.parse(clean);
+        if (Array.isArray(parsed.prompts)) return parsed.prompts;
+    } catch { /* fall through to repair */ }
+
+    // Extract whatever prompts were generated before truncation
+    const matches = [...clean.matchAll(/"([^"]{10,})"/g)]
+        .map(m => m[1])
+        .filter(s => !s.startsWith('{') && s.length > 20);
+
+    if (matches.length > 0) return matches.slice(0, expectedCount);
+
+    // Last resort: return empty strings so the batch doesn't throw
+    return Array(expectedCount).fill('doodle illustration, white background, stick figure character, neutral expression');
+}
+
+async function generateScenePromptBatch(
+    batch: Array<{ timestamp: string; text: string }>,
+    title: string,
+    batchIndex: number
+): Promise<string[]> {
+    const transcriptionText = batch
+        .map((l, i) => `${batchIndex * SCENE_BATCH_SIZE + i + 1}. [${l.timestamp}] ${l.text}`)
+        .join('\n');
+
+    const prompt = `Image prompts for a doodle YouTube video titled: "${title}"
+
+For each scene below, write ONE short English prompt (max 25 words) describing: background color, character expression/pose, and 1-2 key objects.
+
+SCENES:
+${transcriptionText}
+
+Rules:
+- Alternate backgrounds: solid color OR drawn doodle scene (never same type 3x in a row)
+- Expressions: shocked(open mouth O), confused(raised eyebrow), happy(curved mouth/arms up), thinking(HMMM bubble), neutral
+- Keep each prompt under 25 words
+- Any text labels inside the scene must be in Portuguese
+
+Return ONLY valid JSON, no extra text:
+{"prompts":["prompt1","prompt2",...]}`;
+
+    const raw = await callVertexText(prompt, { temperature: 0.7, maxOutputTokens: 2048 });
+    return repairAndParsePromptsJson(raw, batch.length);
+}
+
+export async function generatePalitoScenePrompts(
+    transcription: Array<{ timestamp: string; text: string }>,
+    title: string,
+    onBatchProgress?: (doneBatches: number, totalBatches: number) => void
+): Promise<string[]> {
+    const allPrompts: string[] = [];
+    const totalBatches = Math.ceil(transcription.length / SCENE_BATCH_SIZE);
+
+    for (let i = 0; i < transcription.length; i += SCENE_BATCH_SIZE) {
+        const batch = transcription.slice(i, i + SCENE_BATCH_SIZE);
+        const batchIndex = Math.floor(i / SCENE_BATCH_SIZE);
+        onBatchProgress?.(batchIndex + 1, totalBatches);
+        const descriptions = await generateScenePromptBatch(batch, title, batchIndex);
+        allPrompts.push(...descriptions);
+    }
+
+    return allPrompts.map(desc => `${STYLE_ANCHOR} ${desc}, ${STYLE_CLOSE}`);
+}
+
+// ── Thumbnail ─────────────────────────────────────────────────────────────────
+
+export interface PalitoThumbnailData {
+    textRed: string;
+    textBlack: string;
+    object1: string;
+    object2: string;
+    characterAction: string;
+}
+
+export async function generatePalitoThumbnailData(title: string): Promise<PalitoThumbnailData> {
+    const directionPrompt = `Você é um diretor de arte de canal educativo doodle no YouTube (estilo Tudo Explicadim, Zenn, Me Poupe).
+
+Título do vídeo: "${title}"
+
+Nas capas virais desse estilo, o título é dividido em DUAS partes com duas cores:
+- Parte vermelha: 1 a 2 palavras de impacto no início (ex: "O SEGREDO", "TÉCNICA", "PRÊMIO")
+- Parte preta: o complemento (ex: "DA COPA!", "JAPONESA", "MILIONÁRIO!")
+
+Também identifique 2 objetos concretos do tema e a ação do personagem.
+
+Retorne APENAS um JSON válido (sem markdown, sem explicações):
+{
+  "textRed": "1 a 2 palavras em MAIÚSCULAS em português que vão em VERMELHO — ex: O SEGREDO, TÉCNICA, PRÊMIO",
+  "textBlack": "restante do título em MAIÚSCULAS em português que vai em PRETO — ex: DA COPA!, JAPONESA, MILIONÁRIO!",
+  "object1": "objeto principal em inglês, específico e concreto — ex: giant golden FIFA World Cup trophy, large human brain, stack of dollar bills",
+  "object2": "segundo objeto em inglês — ex: pile of coins, soccer ball, lightning bolt",
+  "characterAction": "ação do personagem em inglês — ex: pointing at object1 with one arm extended and jaw dropped open, eyes wide and arms raised"
+}`;
+
+    const raw = await callVertexText(directionPrompt, { temperature: 0.7, maxOutputTokens: 300 });
+    try {
+        return JSON.parse(raw.replace(/```json|```/g, '').trim()) as PalitoThumbnailData;
+    } catch {
+        const words = title.toUpperCase().split(' ');
+        return {
+            textRed: words.slice(0, 2).join(' '),
+            textBlack: words.slice(2).join(' ') || '!',
+            object1: 'large golden trophy cup',
+            object2: 'pile of gold coins',
+            characterAction: 'pointing at the trophy with one arm extended, mouth open in shock',
+        };
+    }
+}
+
+export function buildPalitoThumbnailPrompt(data: PalitoThumbnailData): string {
+    const fullText = `${data.textRed} ${data.textBlack}`.trim();
+    return [
+        'white background, hand-drawn 2D doodle illustration style,',
+        'thick black marker outlines, flat colors, no gradients, no shadows, no textures,',
+        `large bold uppercase title text at the VERY TOP of the image reading "${fullText}",`,
+        `the words "${data.textRed}" are rendered in bold RED color, the words "${data.textBlack}" are rendered in bold BLACK color,`,
+        'title text is very large occupying the top 25% of the image height,',
+        'ONE single stick figure character positioned on the LEFT THIRD of the frame below the title,',
+        'stick figure: large circular white head with 4 to 5 thin spiky hair lines on top, two black dot eyes, gray t-shirt, dark gray shorts, round white fists,',
+        `character is ${data.characterAction},`,
+        `${data.object1} drawn in cartoon doodle style placed in the CENTER-RIGHT of the frame,`,
+        `${data.object2} near the central object,`,
+        'thick bold red curved arrow pointing from the character toward the central object,',
+        'only ONE character total, high contrast composition, clean white space,',
+        STYLE_CLOSE,
+    ].join(' ');
+}
+
+// ── Metadados ─────────────────────────────────────────────────────────────────
+
+export async function generatePalitoMetadata(title: string, script: string): Promise<{
+    viralTitle: string;
+    description: string;
+    tags: string[];
+}> {
+    const prompt = `Você é um especialista em SEO e crescimento de canais do YouTube no nicho de curiosidades educativas.
+
+Título do vídeo: "${title}"
+Trecho do roteiro (primeiros 300 chars): "${script.substring(0, 300)}..."
+
+Gere os metadados completos prontos para publicação no YouTube.
+
+REGRAS:
+- Título viral: menos de 70 caracteres, orientado à curiosidade, sem clickbait que o roteiro não cumpra
+- Descrição: gancho de 2-3 frases que espelhe a abertura do roteiro + parágrafo de 3-4 frases resumindo o que o espectador vai descobrir (2ª pessoa calma) + linha convidando curtidas/comentários/inscrições + bloco de 15-25 hashtags relevantes em uma única linha
+- Tags: 25 a 40 palavras-chave SEO separadas por vírgula, misturando termos amplos (curiosidades, ciência, história, fatos inacreditáveis) com frases de cauda longa específicas do tema
+- Tudo em PORTUGUÊS BRASILEIRO
+
+Retorne APENAS um JSON válido:
+{"viralTitle": "...", "description": "...", "tags": ["tag1", "tag2", ...]}`;
+
+    const raw = await callVertexText(prompt, { temperature: 0.7 });
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    return {
+        viralTitle: parsed.viralTitle,
+        description: parsed.description,
+        tags: parsed.tags,
+    };
+}
+
+// ── Transcrição de áudio ──────────────────────────────────────────────────────
+
+export async function transcribeAudioWithGemini(audioUrl: string): Promise<Array<{ timestamp: string; text: string }>> {
+    const response = await fetch('/api/transcribe-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioUrl }),
+    });
+    const data = await response.json() as any;
+    if (!response.ok || data.error) throw new Error(data.error || `Erro HTTP ${response.status}`);
+    return data.transcription as Array<{ timestamp: string; text: string }>;
+}

@@ -7,15 +7,40 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { StoryWithNarration, StoryWithScenes, Scene, CharacterDNA } from '../../types/studio';
-import { extractCharactersFromStory, extractStructuredCharacterData, generateScenesWithGemini } from '../../services/gemini';
+import { extractCharactersFromStory, extractStructuredCharacterData, generateScenesWithGemini, stripGreetingPrefix, stripClosingCTA } from '../../services/gemini';
 import { generateImageWithNanoBanana } from '../../services/google_image';
-import { Loader2, User, Palette, Shirt, Sparkles } from 'lucide-react';
+import { Loader2, User, Palette, Shirt, Sparkles, RefreshCw } from 'lucide-react';
 
 interface ScenesPageProps {
     story: StoryWithNarration;
     existingData?: StoryWithScenes; // Pass existing scenes/characters if returning to this step
     onComplete: (storyWithScenes: StoryWithScenes) => void;
     onBack: () => void;
+}
+
+/**
+ * Remove a moldura de canal das cenas: a saudação inicial ("Hoje eu vou contar...")
+ * sai da primeira cena (que passa a começar em "Era uma vez...") e o CTA de
+ * encerramento ("Se você gostou...") sai da última cena (que passa a terminar na moral).
+ * A saudação e o CTA continuam no áudio completo (storyText), apenas não nas cenas/imagens.
+ */
+function removeFramingFromScenes(scenes: Scene[]): Scene[] {
+    if (scenes.length === 0) return scenes;
+    const result = scenes.map(scene => ({ ...scene }));
+
+    const first = result[0];
+    const strippedFirst = stripGreetingPrefix(first.narrationText);
+    if (strippedFirst && strippedFirst !== first.narrationText) {
+        first.narrationText = strippedFirst;
+    }
+
+    const last = result[result.length - 1];
+    const strippedLast = stripClosingCTA(last.narrationText);
+    if (strippedLast && strippedLast !== last.narrationText) {
+        last.narrationText = strippedLast;
+    }
+
+    return result;
 }
 
 export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPageProps) {
@@ -45,7 +70,7 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
         }
     }, []);
 
-    const generateScenesAndCharacters = async () => {
+    const generateScenesAndCharacters = async (forceLLMSeparation = false) => {
         setLoading(true);
         setError('');
 
@@ -63,32 +88,60 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
 
             const characterNames = Object.keys(extractedCharacters);
 
-            // 2. Generate scenes
-            const scenesResult = await generateScenesWithGemini({
-                narration_text: story.storyText,
-                duration: story.duration,
-                targetSceneCount: story.sceneCount,
-                title: story.title,
-                knownCharacters: characterNames
-            });
+            // 2. Generate or Map scenes
+            let generatedScenes: Scene[] = [];
 
-            const generatedScenes: Scene[] = scenesResult.scenes.map((scene: any, index: number) => ({
-                id: `scene-${index + 1}`,
-                order: index + 1,
-                narrationText: scene.narration_text,
-                visualDescription: scene.visual_description,
-                emotion: scene.emotion || 'calma',
-                durationEstimate: scene.duration_estimate || 15,
-                characters: scene.characters || [],
-                imagePrompt: scene.image_prompt
-            }));
+            if (story.rawScenes && story.rawScenes.length > 0 && !forceLLMSeparation) {
+                console.log('[ScenesPage] Using rawScenes from Narration generation');
+                generatedScenes = story.rawScenes.map((scene, index) => {
+                    // Try to guess characters by name matching
+                    const matchedCharacters = characterNames.filter(name => 
+                        (scene.texto || '').toLowerCase().includes(name.toLowerCase()) ||
+                        (scene.prompt_imagem || '').toLowerCase().includes(name.toLowerCase())
+                    );
+                    
+                    return {
+                        id: `scene-${index + 1}`,
+                        order: index + 1,
+                        narrationText: scene.texto,
+                        visualDescription: scene.prompt_imagem || scene.texto,
+                        imagePrompt: scene.prompt_imagem,
+                        emotion: 'calma',
+                        durationEstimate: Math.max(8, Math.round((scene.texto || '').split(' ').length / 2.5)),
+                        characters: matchedCharacters.length > 0 ? matchedCharacters : (characterNames.length > 0 ? [characterNames[0]] : [])
+                    };
+                });
+            } else {
+                console.log('[ScenesPage] Generating scenes using Gemini separation (Fallback)');
+                const scenesResult = await generateScenesWithGemini({
+                    narration_text: story.storyText,
+                    duration: story.duration,
+                    targetSceneCount: story.sceneCount,
+                    title: story.title,
+                    knownCharacters: characterNames
+                });
+
+                generatedScenes = scenesResult.scenes.map((scene: any, index: number) => ({
+                    id: `scene-${index + 1}`,
+                    order: index + 1,
+                    narrationText: scene.narration_text,
+                    visualDescription: scene.visual_description,
+                    emotion: scene.emotion || 'calma',
+                    durationEstimate: scene.duration_estimate || 15,
+                    characters: scene.characters || [],
+                    imagePrompt: scene.image_prompt
+                }));
+            }
+
+            // Remove a moldura (saudação/CTA) das cenas — fica só o corpo da história.
+            generatedScenes = removeFramingFromScenes(generatedScenes);
 
             setScenes(generatedScenes);
 
             // 3. Generate structured character data for main characters
             const characterDNAs: Record<string, CharacterDNA> = {};
 
-            for (const name of characterNames.slice(0, 5)) { // Limit to 5 characters to avoid hitting rate limits or taking too long
+            const characterPromises = characterNames.slice(0, 5).map(async (name) => {
                 try {
                     const structuredData = await extractStructuredCharacterData(story.storyText, name, story.visualStyle);
 
@@ -106,7 +159,9 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
                 } catch (err) {
                     console.error(`[ScenesPage] Error generating DNA for ${name}:`, err);
                 }
-            }
+            });
+
+            await Promise.all(characterPromises);
 
             setCharacters(characterDNAs);
 
@@ -324,9 +379,18 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
 
                     {/* Scenes List */}
                     <div className="bg-card rounded-2xl shadow-lg p-6 border border-border">
-                        <h2 className="text-2xl font-bold text-foreground mb-4">
-                            Cenas Geradas ({scenes.length})
-                        </h2>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-2xl font-bold text-foreground">
+                                Cenas Geradas ({scenes.length})
+                            </h2>
+                            <button
+                                onClick={() => generateScenesAndCharacters(true)}
+                                className="px-4 py-2 bg-secondary/80 text-secondary-foreground hover:bg-secondary rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                                Regenerar Divisão de Cenas
+                            </button>
+                        </div>
 
                         <div className="space-y-4 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-border">
                             {scenes.map((scene) => (

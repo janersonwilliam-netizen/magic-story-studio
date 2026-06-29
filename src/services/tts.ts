@@ -6,7 +6,7 @@
 
 export interface GenerateAudioParams {
     text: string;
-    emotion?: 'cheerfully' | 'sadly' | 'excitedly' | 'calmly' | 'mysteriously' | 'warmly';
+    emotion?: 'cheerfully' | 'sadly' | 'excitedly' | 'calmly' | 'mysteriously' | 'warmly' | 'dramatically' | 'heroically' | 'storyteller' | 'playfully' | 'suspenseful' | 'authoritative' | 'narrator' | 'broadcaster';
     voiceName?: string;
     targetDurationMinutes?: number;
     speakingRate?: number; // Not directly supported, but can be adjusted via prompt
@@ -95,7 +95,7 @@ let googleBillingUnavailable = false;
  * (~5 min) a história inteira costuma caber em UMA chamada = UMA voz só. Acima
  * disso, fragmenta no MENOR número de blocos (grandes), com crossfade na emenda.
  */
-const MAX_TTS_CHUNK_CHARS = 900;
+const MAX_TTS_CHUNK_CHARS = 4000;
 
 /**
  * Volume médio (RMS) alvo, em escala linear (0..1). ~0,12 ≈ -18 dBFS.
@@ -252,7 +252,8 @@ async function generateSingleGeminiAudioNarration(params: GenerateAudioParams): 
     const wavBytes = base64ToUint8Array(base64);
     const pcmRaw = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
     const before = measurePcmLoudness(pcmRaw);
-    const leveledPcm = normalizeFinalPeak(pcmRaw);
+    const slowLeveled = levelLoudnessSlow(pcmRaw, 24000);
+    const leveledPcm = normalizeFinalPeak(slowLeveled);
     const after = measurePcmLoudness(leveledPcm);
 
     console.log(
@@ -392,19 +393,24 @@ function estimateSpeakingRate(text: string, targetDurationMinutes: number): numb
 
 /** Maps the internal emotion keyword to a natural pt-BR tone description. */
 const EMOTION_PT: Record<NonNullable<GenerateAudioParams['emotion']>, string> = {
+    warmly: 'claro, caloroso e acolhedor',
     cheerfully: 'claro, alegre e acolhedor, sem gritar',
     sadly: 'claro, sensível e acolhedor, sem baixar a voz',
     excitedly: 'claro, animado e acolhedor, sem gritar',
     calmly: 'claro, calmo e acolhedor, sem sussurrar',
-    mysteriously: 'claro e envolvente, sem sussurrar e sem voz baixa',
-    warmly: 'claro, caloroso e acolhedor',
+    mysteriously: 'claro e envolvente, com tom misterioso e seguro, sem sussurrar',
+    dramatically: 'claro, marcante e expressivo, com inflexão dramática e firme',
+    heroically: 'claro, firme, motivador e grandioso, tom de aventura',
+    storyteller: 'expressivo, envolvente e natural, tom clássico de contação de histórias',
+    playfully: 'divertido, leve, dinâmico e brincalhão',
+    suspenseful: 'com clima de suspense e expectativa, mantendo boa projeção e clareza',
+    authoritative: 'confiante, firme, claro e profissional, estilo locução',
+    narrator: 'narrador documental neutro e fluido, ritmo constante, voz clara e objetiva, estilo narração de documentário',
+    broadcaster: 'locutor profissional de rádio ou TV, voz cheia e projetada, dicção impecável, tom confiante e dinâmico',
 };
 
 function getCleanNarrationEmotion(emotion: GenerateAudioParams['emotion']): NonNullable<GenerateAudioParams['emotion']> {
-    // Full-story narration should match the successful audio test preset:
-    // clear audiobook voice. Dramatic/mysterious/calm tones make Gemini TTS
-    // drift into boxed, breathy or whispered delivery on longer stories.
-    if (emotion === 'cheerfully' || emotion === 'excitedly') return emotion;
+    if (emotion && EMOTION_PT[emotion]) return emotion;
     return 'warmly';
 }
 
@@ -436,9 +442,9 @@ function buildGeminiNarrationPrompt(
     }
 
     return `Synthesize only the transcript below in Portuguese from Brazil.
-Voice profile: one clear professional narrator, open tone, steady projection, natural brightness, consistent timbre.
-Delivery: children's story narration for video, friendly and expressive, with stable speaking volume.
-Dialogue must stay in the same narrator voice and same timbre as the surrounding narration.
+Voice profile: one clear professional narrator, open tone, steady projection, natural brightness, consistent timbre throughout the entire recording.
+Delivery style: ${tom}. Maintain this style consistently from the first word to the last. Do not change tone or timbre mid-recording.
+Stable speaking volume at all times — never whisper, never shout, never fade.
 ${pacing}
 
 Transcript:`;
@@ -834,7 +840,7 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
     // Concatena os blocos com um crossfade curto na emenda (em vez de corte seco),
     // suavizando a troca de voz entre blocos (cada bloco é uma geração stateless
     // com timbre levemente diferente → o corte seco soa como "duas vozes").
-    const concatenatedPcm = concatPcmWithCrossfade(pcmBuffers, 24000, 25);
+    const concatenatedPcm = concatPcmWithCrossfade(pcmBuffers, 24000, 120);
 
     // Slow loudness leveler on the WHOLE audio at once — evens out the slow
     // volume arc ("normal → quiet → loud") that comes from Gemini, without
@@ -842,7 +848,7 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
     const before = measurePcmLoudness(concatenatedPcm);
     const leveledPcm = params.disableLeveling
         ? concatenatedPcm
-        : normalizeFinalPeak(concatenatedPcm);
+        : normalizeFinalPeak(levelLoudnessSlow(concatenatedPcm, 24000));
     const after = measurePcmLoudness(leveledPcm);
     console.log(
         `[Gemini TTS][DIAG] NIVELADO(${params.disableLeveling ? 'OFF' : 'ON'}) | quartis ANTES: ${before.quartersDb.join(' → ')} | ` +
@@ -872,6 +878,16 @@ export function getEmotionPrompt(emotion: string): GenerateAudioParams['emotion'
         'mistério': 'mysteriously',
         'carinhoso': 'warmly',
         'acolhedor': 'warmly',
+        'dramático': 'dramatically',
+        'dramatica': 'dramatically',
+        'épico': 'heroically',
+        'heroico': 'heroically',
+        'narrativo': 'storyteller',
+        'divertido': 'playfully',
+        'brincalhão': 'playfully',
+        'suspense': 'suspenseful',
+        'confiante': 'authoritative',
+        'locutor': 'authoritative',
     };
 
     return emotionMap[emotion.toLowerCase()] || 'warmly';

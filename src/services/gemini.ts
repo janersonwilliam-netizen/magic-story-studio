@@ -19,6 +19,7 @@ export interface GenerateStoryParams {
 export interface GenerateStoryResponse {
     story_text: string;
     narration_text: string;
+    rawScenes?: any[];
 }
 
 // ── Helper central: chama o backend Vertex AI ──────────────────────────────
@@ -152,6 +153,7 @@ export async function generateStoryWithGemini(
     return {
         story_text: text || JSON.stringify(data),
         narration_text: text || JSON.stringify(data),
+        rawScenes: data.cenas
     };
 }
 
@@ -258,7 +260,55 @@ export interface GenerateScenesResponse {
 }
 
 const SCENE_EMOTIONS = ['alegre', 'calma', 'aventura', 'surpresa', 'medo', 'tristeza', 'curiosidade'];
+const MIN_SCENE_WORDS = 8;
 const NON_STORY_SCENE_PATTERN = /\b(title card|capa|cart[aã]o final|ending card|final card|inscreva|subscribe|sininho|cr[eé]ditos)\b/i;
+
+// Marcadores de moldura (intro/encerramento) que NÃO devem fazer parte das cenas da história.
+const STORY_OPENING_MARKER = /era uma vez/i;
+const GREETING_PREFIX = /^\s*hoje\s+eu\s+vou\s+contar[^.!?…]*[.!?…]+/i;
+const CLOSING_CTA_MARKER = /se\s+voc[eê]\s+gostou/i;
+
+/**
+ * Remove a saudação de abertura ("Hoje eu vou contar uma historinha...") do início do texto,
+ * fazendo a história começar em "Era uma vez...". Mantém o restante intacto.
+ * Se nenhum marcador for encontrado, retorna o texto original.
+ */
+export function stripGreetingPrefix(text: string): string {
+    if (!text) return text;
+    const opening = text.match(STORY_OPENING_MARKER);
+    // Caso ideal: "Hoje eu vou contar... Era uma vez, ..." -> corta tudo antes de "Era uma vez".
+    if (opening && opening.index !== undefined && GREETING_PREFIX.test(text)) {
+        return text.slice(opening.index).trimStart();
+    }
+    // Sem "Era uma vez", mas começa com a saudação: remove apenas a frase de saudação.
+    if (GREETING_PREFIX.test(text)) {
+        const stripped = text.replace(GREETING_PREFIX, '').trimStart();
+        return stripped || text;
+    }
+    return text;
+}
+
+/**
+ * Remove a chamada de encerramento ("Se você gostou, já sabe: curta, se inscreva...") do final
+ * do texto, mantendo a moral/lição que vem antes dela.
+ */
+export function stripClosingCTA(text: string): string {
+    if (!text) return text;
+    const cta = text.match(CLOSING_CTA_MARKER);
+    if (cta && cta.index !== undefined) {
+        const trimmed = text.slice(0, cta.index).trimEnd();
+        return trimmed || text;
+    }
+    return text;
+}
+
+/**
+ * Remove a moldura (saudação inicial e CTA final) do texto completo da narração,
+ * de modo que a separação de cenas trabalhe apenas com o corpo da história.
+ */
+export function stripStoryFraming(text: string): string {
+    return stripClosingCTA(stripGreetingPrefix(text));
+}
 
 function cleanJsonText(rawText: string): string {
     const text = rawText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
@@ -324,15 +374,16 @@ function getSceneValidationIssues(scenes: Scene[], expectedCount: number, narrat
         if (!scene.image_prompt || countWords(scene.image_prompt) < 8) {
             issues.push(`cena ${index + 1} sem image_prompt detalhado`);
         }
-        const combined = `${scene.narration_text} ${scene.visual_description} ${scene.image_prompt}`;
-        if (NON_STORY_SCENE_PATTERN.test(combined)) {
+        const visualOnly = `${scene.visual_description} ${scene.image_prompt}`
+            .replace(/\b(no|sem)\s+(title card|capa|ending card|final card|subscribe screen|sininho|creditos)\b/gi, '');
+        if (NON_STORY_SCENE_PATTERN.test(visualOnly)) {
             issues.push(`cena ${index + 1} parece capa, CTA, créditos ou cartão final`);
         }
     });
 
     const originalWordCount = countWords(narrationText);
     const sceneWordCount = countWords(scenes.map(scene => scene.narration_text).join(' '));
-    if (originalWordCount > 80 && sceneWordCount < originalWordCount * 0.65) {
+    if (originalWordCount > 80 && sceneWordCount < originalWordCount * 0.92) {
         issues.push('os trechos de narração das cenas não cobrem a história completa');
     }
 
@@ -341,20 +392,55 @@ function getSceneValidationIssues(scenes: Scene[], expectedCount: number, narrat
 
 function splitNarrationIntoChunks(text: string, count: number): string[] {
     const normalized = text.replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (count <= 1) return [normalized];
+    if (words.length === 0) return Array.from({ length: count }, () => '');
+
     const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map(sentence => sentence.trim()).filter(Boolean) || [normalized];
     const chunks = Array.from({ length: count }, () => [] as string[]);
+    const targetWordsPerChunk = Math.max(MIN_SCENE_WORDS, Math.ceil(words.length / count));
+    let currentChunkIndex = 0;
+    let currentChunkWords = 0;
 
     sentences.forEach((sentence, sentenceIndex) => {
-        const chunkIndex = Math.min(count - 1, Math.floor(sentenceIndex * count / Math.max(1, sentences.length)));
-        chunks[chunkIndex].push(sentence);
+        const sentenceWordCount = countWords(sentence);
+        const remainingSentences = sentences.length - sentenceIndex;
+        const remainingChunks = count - currentChunkIndex;
+        const shouldMoveToNextChunk =
+            currentChunkIndex < count - 1 &&
+            currentChunkWords >= MIN_SCENE_WORDS &&
+            currentChunkWords + sentenceWordCount > targetWordsPerChunk &&
+            remainingSentences >= remainingChunks;
+
+        if (shouldMoveToNextChunk) {
+            currentChunkIndex += 1;
+            currentChunkWords = 0;
+        }
+
+        chunks[currentChunkIndex].push(sentence);
+        currentChunkWords += sentenceWordCount;
     });
 
     return chunks.map((chunk, index) => {
         if (chunk.length > 0) return chunk.join(' ');
-        const words = normalized.split(/\s+/).filter(Boolean);
         const start = Math.floor(index * words.length / count);
         const end = Math.floor((index + 1) * words.length / count);
         return words.slice(start, Math.max(start + 1, end)).join(' ');
+    });
+}
+
+function applyExactNarrationChunks(scenes: Scene[], chunks: string[], targetAvgDuration: number): Scene[] {
+    return chunks.map((chunk, index) => {
+        const scene = scenes[index];
+        return {
+            order: index + 1,
+            narration_text: chunk,
+            visual_description: scene?.visual_description || `Cena ${index + 1}: momento narrativo real deste trecho, com personagens em acao, cenario completo, composicao clara e continuidade da historia. Trecho: ${chunk.substring(0, 420)}`,
+            image_prompt: scene?.image_prompt || `Children story cinematic illustration for scene ${index + 1} of ${chunks.length}. Show the real narrative event from this narration beat with expressive characters, clear action, detailed environment, foreground and background, story-specific props, no title text, no subscribe screen, no ending card. Narration beat: ${chunk.substring(0, 420)}`,
+            emotion: scene?.emotion || SCENE_EMOTIONS[index % SCENE_EMOTIONS.length],
+            duration_estimate: scene?.duration_estimate || targetAvgDuration,
+            characters: scene?.characters || [],
+        };
     });
 }
 
@@ -375,6 +461,7 @@ function buildSceneSeparationPrompt(
     params: GenerateScenesParams,
     requiredScenes: number,
     targetAvgDuration: number,
+    narrationChunks: string[],
     previousIssues: string[] = []
 ): string {
     const retryBlock = previousIssues.length
@@ -391,22 +478,26 @@ REGRAS OBRIGATÓRIAS:
 1. QUANTIDADE DE CENAS: Crie EXATAMENTE ${requiredScenes} cenas. Nem ${requiredScenes - 1}, nem ${requiredScenes + 1}.
 2. COBERTURA TOTAL: use a história inteira, do primeiro acontecimento até a resolução final. Não resuma a ponto de remover partes importantes.
 3. NARRAÇÃO: narration_text deve conter o trecho correspondente da história, em ordem, preservando o conteúdo narrativo. A soma dos narration_text deve cobrir a história completa.
-4. PRIMEIRA CENA: deve conter o início exato da história gerada, preservando de forma integral a frase exata de abertura ("Hoje eu vou contar uma historinha..."), integrada à primeira ação e cenário da história. NÃO remova, corte ou simplifique a introdução textual de forma alguma. NÃO crie capa, título, vinheta ou "TITLE CARD".
-5. ÚLTIMA CENA: deve conter o final exato da história gerada, preservando de forma integral a lição/moral da história e a chamada de encerramento exata ("Se você gostou, já sabe: curta, se inscreva no canal e ative o sininho para não perder nenhuma historinha nova! Um beijo grande… e até a próxima história! Tchau, tchau!"), mostrando a resolução final. NÃO remova, corte ou simplifique esse encerramento textual de forma alguma.
+4. PRIMEIRA CENA: deve começar exatamente no início da HISTÓRIA (a frase "Era uma vez..." ou a primeira ação narrativa). NÃO inclua a saudação de abertura ("Hoje eu vou contar uma historinha...") — ela é uma introdução de canal e NÃO faz parte das cenas. NÃO crie capa, título, vinheta ou "TITLE CARD".
+5. ÚLTIMA CENA: deve terminar na lição/moral da história, mostrando a resolução final. NÃO inclua a chamada de encerramento ("Se você gostou, já sabe: curta, se inscreva...") — ela é um encerramento de canal e NÃO faz parte das cenas.
 6. EMOÇÕES permitidas: alegre, calma, aventura, surpresa, medo, tristeza, curiosidade.
 7. FORMATO: JSON válido sem markdown.
 8. DESCRIÇÃO VISUAL: cada cena deve descrever UMA única imagem estática e clara. Evite colagens, múltiplos painéis ou sequências.
-9. AUTENTICIDADE VISUAL: cada cena precisa parecer um novo momento do filme, não uma variação do mesmo fundo. Mantenha personagens consistentes, mas varie cenário, hora do dia, clima, paleta, profundidade, objetos de cena e composição.
+9. AUTENTICIDADE E CONSISTÊNCIA VISUAL: cada cena precisa parecer um novo momento do filme, não uma variação do mesmo fundo. Mantenha os personagens ESTRITAMENTE CONSISTENTES, copiando e colando a mesma descrição física exata em todas as cenas, mas varie cenário, hora do dia, clima, paleta, profundidade, objetos de cena e composição.
 10. NÃO repita automaticamente floresta ensolarada, caminho de terra, árvores arredondadas, jardim mágico ou backlight dourado. Use esses elementos apenas quando a narrativa pedir.
 11. VARIE O PLANO E A CÂMERA por cena: establishing wide shot, low angle, high angle, over-the-shoulder, close-up emocional, top-down, side view, foreground framing, silhouette, point-of-view.
 12. visual_description deve conter: local específico, ação principal, posição dos personagens, ângulo de câmera, iluminação/hora do dia, detalhes de primeiro plano e fundo.
-13. image_prompt deve estar em inglês, pronto para geração de imagem, incluindo detalhes únicos daquela cena. Não use nomes próprios; descreva personagens visualmente.
+13. image_prompt deve estar em inglês, pronto para geração de imagem, incluindo detalhes únicos daquela cena. Não use nomes próprios; descreva personagens visualmente COM AS MESMAS ROUPAS, CORES E CARACTERÍSTICAS FÍSICAS EM TODAS AS CENAS.
+14. Use os BLOCOS NARRATIVOS OBRIGATORIOS como fonte principal. Para a cena N, o campo narration_text deve ser exatamente o bloco N, e visual_description/image_prompt devem representar o acontecimento principal desse mesmo bloco.
 ${retryBlock}
 TÍTULO: ${params.title || 'História'}
 ${characterBlock}
 
 TEXTO COMPLETO DA NARRAÇÃO:
 ${params.narration_text}
+
+BLOCOS NARRATIVOS OBRIGATORIOS (uma cena para cada bloco, copiando o texto integral em narration_text):
+${narrationChunks.map((chunk, index) => `CENA ${index + 1}/${requiredScenes}:\n"""${chunk}"""`).join('\n\n')}
 
 FORMATO DE SAÍDA:
 {
@@ -436,11 +527,15 @@ export async function generateScenesWithGemini(
     requiredScenes = Math.max(1, Math.round(requiredScenes));
     const totalSeconds = params.duration * 60;
     const targetAvgDuration = Math.max(1, Math.round(totalSeconds / requiredScenes));
+    // A moldura (saudação inicial e CTA final) é mantida apenas no áudio completo,
+    // não nas cenas: separamos somente o corpo real da história.
+    const storyBody = stripStoryFraming(params.narration_text);
+    const narrationChunks = splitNarrationIntoChunks(storyBody, requiredScenes);
     let previousIssues: string[] = [];
 
     for (let attempt = 0; attempt < 3; attempt++) {
         try {
-            const prompt = buildSceneSeparationPrompt(params, requiredScenes, targetAvgDuration, previousIssues);
+            const prompt = buildSceneSeparationPrompt({ ...params, narration_text: storyBody }, requiredScenes, targetAvgDuration, narrationChunks, previousIssues);
             const rawText = await callVertexText(prompt, {
                 jsonMode: true,
                 temperature: attempt === 0 ? 0.45 : 0.25,
@@ -448,9 +543,10 @@ export async function generateScenesWithGemini(
             });
 
             const data = parseScenesPayload(rawText);
-            const finalScenes = (Array.isArray(data?.scenes) ? data.scenes : [])
+            const modelScenes = (Array.isArray(data?.scenes) ? data.scenes : [])
                 .map((scene: any, index: number) => normalizeScene(scene, index, targetAvgDuration));
-            const issues = getSceneValidationIssues(finalScenes, requiredScenes, params.narration_text);
+            const finalScenes = applyExactNarrationChunks(modelScenes, narrationChunks, targetAvgDuration);
+            const issues = getSceneValidationIssues(finalScenes, requiredScenes, storyBody);
 
             if (issues.length === 0) {
                 return { scenes: finalScenes };
@@ -465,7 +561,7 @@ export async function generateScenesWithGemini(
     }
 
     console.warn('[Gemini] Usando fallback determinístico para garantir a quantidade exata de cenas.');
-    return { scenes: buildFallbackScenes(params.narration_text, requiredScenes, targetAvgDuration) };
+    return { scenes: buildFallbackScenes(storyBody, requiredScenes, targetAvgDuration) };
 }
 
 // ── Prompt de Imagem ───────────────────────────────────────────────────────
@@ -484,28 +580,6 @@ export interface GenerateImagePromptParams {
 export async function generateImagePrompt(params: GenerateImagePromptParams): Promise<string> {
     const sceneIndex = params.sceneIndex ?? 0;
     const totalScenes = Math.max(1, params.totalScenes ?? 1);
-    const recipes = [
-        'establishing wide shot, lots of environment, clear geography, characters small within the world',
-        'low-angle action shot, foreground objects close to camera, strong depth layers',
-        'over-the-shoulder view, character looking toward an important discovery, background tells the story',
-        'high-angle or top-down composition, visible path or object layout, playful geometry',
-        'medium side-view action, characters crossing the frame, motion lines or environmental movement',
-        'intimate close-up with a distinctive prop, background changed by color, texture and light',
-        'dramatic silhouette or rim-light composition, unusual time of day, strong shape language',
-        'point-of-view shot from inside or behind an object, immersive framing, scene-specific details',
-    ];
-    const palettes = [
-        'fresh morning palette with crisp sky colors',
-        'cozy indoor amber and soft shadow palette',
-        'cool blue afternoon palette with reflective highlights',
-        'sunset coral and violet palette',
-        'moonlit teal and silver palette',
-        'rain-washed saturated greens and sparkling puddles',
-        'dusty warm workshop palette with tactile materials',
-        'festival-like multicolor palette with controlled contrast',
-    ];
-    const recipe = recipes[sceneIndex % recipes.length];
-    const palette = palettes[sceneIndex % palettes.length];
     const parts: string[] = [];
 
     // Character descriptions first (most important for consistency)
@@ -514,30 +588,29 @@ export async function generateImagePrompt(params: GenerateImagePromptParams): Pr
             if (charName === '__PROTAGONIST__') return;
             const desc = params.characterDescriptions![charName];
             if (desc) {
-                parts.push(`Character identity to preserve: ${desc.substring(0, 240)}`);
+                parts.push(`CRITICAL: Character physical description must be EXACTLY: ${desc.substring(0, 300)}`);
             }
         });
     }
 
-    // Scene action
+    // Scene action and setting (Trust the storyboard!)
     if (params.visual_description) {
-        parts.push(`Unique storyboard moment (scene ${sceneIndex + 1} of ${totalScenes}): ${params.visual_description}`);
+        parts.push(`Storyboard moment (scene ${sceneIndex + 1} of ${totalScenes}): ${params.visual_description}`);
     }
-
-    parts.push(`Composition recipe: ${recipe}`);
-    parts.push(`Scene-specific color and light: ${palette}`);
-    parts.push('Make the setting feel unique to this exact story beat; change location details, props, weather, time of day, depth layers and camera placement from other scenes');
+    
+    // Explicitly tell the generator to follow the setting
+    parts.push('CRITICAL: Follow the exact setting and location described in the storyboard moment. Do not change the time of day or location unless the storyboard implies it.');
 
     // Style
     const is2D = params.visual_style === 'Estilo 2D Cartoon';
     const styleStr = is2D
-        ? 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, scene-specific cinematic lighting, soft colorful shading, very vibrant colors, crisp clean outlines, animated children storybook style, NO 3D rendering, NO CGI, well-proportioned anatomy, correct number of limbs'
-        : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, scene-specific cinematic lighting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs';
+        ? 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, cinematic lighting matching the scene setting, soft colorful shading, very vibrant colors, crisp clean outlines, animated children storybook style, NO 3D rendering, NO CGI, well-proportioned anatomy, correct number of limbs'
+        : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, cinematic lighting matching the scene setting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs';
 
     // Emotion
     const emotionStr = params.emotion ? `, ${params.emotion} mood` : '';
 
-    return `${parts.join(', ')}, ${styleStr}${emotionStr}, fully detailed environment background, authentic cinematic storytelling frame, avoid generic repeated sunny forest path, avoid identical background composition, NO white background, NO plain background, children book illustration, widescreen 16:9`;
+    return `${parts.join(', ')}, ${styleStr}${emotionStr}, fully detailed environment background matching the story, authentic cinematic storytelling frame, NO white background, NO plain background, children book illustration, widescreen 16:9`;
 }
 
 export interface GenerateCharacterDescriptionsParams {

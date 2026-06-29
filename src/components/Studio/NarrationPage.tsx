@@ -312,6 +312,12 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
                                         { value: 'calmly', label: 'Calma', icon: '😌' },
                                         { value: 'mysteriously', label: 'Misteriosa', icon: '🔮' },
                                         { value: 'sadly', label: 'Triste', icon: '😢' },
+                                        { value: 'dramatically', label: 'Dramática', icon: '🎭' },
+                                        { value: 'heroically', label: 'Épica', icon: '🦸‍♂️' },
+                                        { value: 'storyteller', label: 'Narrativa', icon: '📖' },
+                                        { value: 'playfully', label: 'Divertida', icon: '😜' },
+                                        { value: 'suspenseful', label: 'Suspense', icon: '🕯️' },
+                                        { value: 'authoritative', label: 'Confiante', icon: '🎙️' },
                                     ].map((emotionOption) => (
                                         <div key={emotionOption.value} className="relative group cursor-pointer">
                                             <input

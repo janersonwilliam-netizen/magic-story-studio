@@ -21,6 +21,22 @@ if (!apiKey) {
     console.warn('Google API key not configured. Image generation will not work.');
 }
 
+// Modelos de imagem (Gemini/Imagen) tendem a "desenhar" qualquer texto entre aspas
+// presente no prompt — principalmente a fala dos personagens vinda da narração
+// (ex.: "Estou cansada," ela suspirava...). Esta instrução força a imagem a ser
+// puramente visual, sem legendas, letras ou tipografia de nenhum tipo.
+const NO_TEXT_NEGATIVE = ' ABSOLUTELY NO text, no letters, no words, no captions, no subtitles, no speech bubbles, no dialogue text, no writing, no numbers, no signature, no watermark and no logos anywhere in the image. The illustration must be 100% visual with zero typography.';
+
+// Remove aspas/apóstrofos que sinalizam ao gerador para renderizar texto literal.
+function stripQuoteCues(text: string): string {
+    return text.replace(/["'“”‘’«»„‟]/g, '');
+}
+
+// Detecta se o prompt PEDE texto (capa/thumbnail com título). Nesse caso NÃO bloqueamos texto.
+function promptWantsText(text: string): boolean {
+    return /TITULO:|TITLE DESIGN|title text|movie logo|spell(ed)? exactly/i.test(text);
+}
+
 /**
  * Translate and compact prompt from Portuguese to English
  * Nano Banana works better with concise, direct English prompts
@@ -45,15 +61,26 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
     if (isAlreadyEnglish) {
         console.log('[Translate] Prompt already in English, skipping translation');
         let result = prompt.replace(/\s+/g, ' ').trim();
-        // Truncate the description part to leave room for the style suffix
-        const suffix = styleConfig ? getStyleSuffix(styleConfig) : '';
-        const maxDescLen = 1200 - suffix.length;
+        const wantsText = promptWantsText(result);
+        // Em prompts de cena (sem título) removemos as aspas que fazem o modelo
+        // escrever a fala/narração dentro da imagem.
+        if (!wantsText) result = stripQuoteCues(result);
+        // Só adiciona o sufixo de estilo se o prompt ainda não trouxer instruções de estilo,
+        // para não duplicar conteúdo e não desperdiçar espaço com a ação da cena.
+        const styleAlreadyPresent = /widescreen 16:9|children book illustration|children storybook|cartoon illustration|animated children movie|NO CGI|NO 3D/i.test(result);
+        const suffix = (styleConfig && !styleAlreadyPresent) ? getStyleSuffix(styleConfig) : '';
+        const noTextClause = (!wantsText && !/no text|sem texto|no letters/i.test(result)) ? NO_TEXT_NEGATIVE : '';
+        // Gemini 3 Flash Image lida bem com prompts longos; mantemos a descrição da cena
+        // praticamente inteira para a imagem não "perder partes" do que acontece na cena.
+        const maxDescLen = 1900 - suffix.length - noTextClause.length;
         if (result.length > maxDescLen) {
             result = result.substring(0, maxDescLen);
         }
-        // Only append style suffix if it's not already present in the prompt
-        if (styleConfig && !result.includes('NO 3D rendering') && !result.includes('Pixar animation style')) {
+        if (suffix) {
             result += suffix;
+        }
+        if (noTextClause) {
+            result += noTextClause;
         }
         console.log('[Translate] Final prompt length:', result.length);
         return result;
@@ -77,6 +104,9 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
                 if (styleConfig) {
                     translated += getStyleSuffix(styleConfig);
                 }
+                if (!promptWantsText(prompt)) {
+                    translated = stripQuoteCues(translated) + NO_TEXT_NEGATIVE;
+                }
                 return translated;
             }
         } catch (e) {
@@ -86,6 +116,9 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
         let fallback = prompt.replace(/\s+/g, ' ').trim().substring(0, 900);
         if (styleConfig) {
             fallback += getStyleSuffix(styleConfig);
+        }
+        if (!promptWantsText(prompt)) {
+            fallback = stripQuoteCues(fallback) + NO_TEXT_NEGATIVE;
         }
         return fallback;
     }
@@ -279,6 +312,11 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
         optimized = optimized.substring(0, 1200);
     }
 
+    // Cenas (sem título) não devem conter texto desenhado na imagem.
+    if (!titleText) {
+        optimized = stripQuoteCues(optimized) + NO_TEXT_NEGATIVE;
+    }
+
     console.log('[Translate] Species detected:', speciesEN || 'not specified');
 
     return optimized;
@@ -319,6 +357,7 @@ export async function generateImageWithNanoBanana(prompt: string, styleConfig?: 
                 throw new Error(`Invalid JSON response from server (Status ${response.status}): ${textResponse.substring(0, 100)}`);
             }
             if (!response.ok) throw new Error(data.error || `Erro HTTP ${response.status}`);
+            if (data.url) return data.url;
             if (data.base64) return `data:${data.mimeType || 'image/png'};base64,${data.base64}`;
             throw new Error('Nenhuma imagem retornada pelo backend');
         } catch (err: any) {
@@ -389,6 +428,7 @@ export async function generateImageWithReferences(
                 throw new Error(`Invalid JSON response from server (Status ${response.status}): ${textResponse.substring(0, 100)}`);
             }
             if (!response.ok) throw new Error(data.error || `Erro HTTP ${response.status}`);
+            if (data.url) return data.url;
             if (data.base64) return `data:${data.mimeType || 'image/png'};base64,${data.base64}`;
             throw new Error('Nenhuma imagem retornada');
         } catch (err: any) {

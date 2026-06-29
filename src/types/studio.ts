@@ -31,10 +31,17 @@ export type VisualStyle =
 /**
  * Story with generated text (NARRATION page)
  */
+export interface RawScene {
+    numero: number;
+    texto: string;
+    prompt_imagem: string;
+}
+
 export interface StoryWithNarration extends StoryConfig {
     storyId: string;
     storyText: string;
     narrationText: string;
+    rawScenes?: RawScene[];
     audioUrl?: string; // Audio preview url generated on Narration page
 }
 

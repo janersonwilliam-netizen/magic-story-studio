@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, Users, Smile, Edit2, Save, X, Image as ImageIcon, Loader2, RefreshCw, Sparkles, Volume2, Download } from 'lucide-react';
 import { useSafeImage } from '../hooks/useSafeImage';
+import { WaveformPlayer } from './Studio/WaveformPlayer';
 
 interface Scene {
     id?: string;
@@ -316,10 +317,13 @@ export function SceneList({
                                         </div>
 
                                         {scene.audioUrl ? (
-                                            <audio
-                                                controls
+                                            <WaveformPlayer
                                                 src={scene.audioUrl}
-                                                className="w-full h-8"
+                                                height={36}
+                                                playedColor="#2563eb"
+                                                unplayedColor="rgba(0, 0, 0, 0.12)"
+                                                buttonClassName="bg-blue-600 text-white hover:bg-blue-700"
+                                                timeClassName="text-gray-500"
                                             />
                                         ) : (
                                             <button

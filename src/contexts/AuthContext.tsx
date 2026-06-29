@@ -29,10 +29,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Listen for auth changes
         const {
             data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
+        } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_OUT' || session === null) {
+                setSession(null);
+                setUser(null);
+            } else {
+                setSession(session);
+                setUser(session?.user ?? null);
+            }
+            
+            // Only complete loading on specific events to prevent aggressive redirects
+            if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+                setLoading(false);
+            }
         });
 
         return () => subscription.unsubscribe();

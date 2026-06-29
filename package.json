@@ -28,7 +28,8 @@
     "openai": "^6.15.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.11.0"
+    "react-router-dom": "^7.11.0",
+    "wavesurfer.js": "^7.12.8"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260503.1",

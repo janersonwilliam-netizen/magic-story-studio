@@ -12,10 +12,12 @@ import { SettingsPage } from './components/SettingsPage';
 import { PromptMasterPage } from './components/PromptMasterPage';
 import ImageTestPage from './components/ImageTestPage';
 import PollinationsTestPage from './components/PollinationsTestPage';
+import NarrationTestPage from './components/NarrationTestPage';
 import { IdeaResearchPage } from './components/IdeaResearchPage';
 import { PlaygroundPage } from './components/PlaygroundPage';
 import { VideoGenPage } from './components/VideoGenPage';
 import { MusicClipPage } from './components/MusicClipPage';
+import { PalitoIndex } from './components/Palito';
 
 export default function App() {
     return (
@@ -41,10 +43,12 @@ export default function App() {
                         <Route path="/prompt-master" element={<PromptMasterPage />} />
                         <Route path="/image-test" element={<ImageTestPage />} />
                         <Route path="/pollinations-test" element={<PollinationsTestPage />} />
+                        <Route path="/narration-test" element={<NarrationTestPage />} />
                         <Route path="/ideas" element={<IdeaResearchPage />} />
                         <Route path="/playground" element={<PlaygroundPage />} />
                         <Route path="/video-gen" element={<VideoGenPage />} />
                         <Route path="/music-clip" element={<MusicClipPage />} />
+                        <Route path="/palito" element={<PalitoIndex />} />
                     </Route>
 
                     {/* Default redirect */}

@@ -7,36 +7,56 @@ import { storyStorage, StoryProject } from '../lib/storyStorage';
 export function Dashboard() {
     const { user, signOut } = useAuth();
     const navigate = useNavigate();
+    const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
     const [stories, setStories] = useState<StoryProject[]>([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const [pageSize, setPageSize] = useState(20);
+    const [total, setTotal] = useState(0);
 
     useEffect(() => {
         if (user?.id) {
             loadStories();
         }
-    }, [user?.id]);
+    }, [user?.id, page, pageSize]);
 
     const loadStories = async () => {
         try {
             setLoading(true);
 
-            // 1. Instant Load (Local)
+            // 1. Carrega o que existe só localmente (para mesclar na 1ª página)
             const localData = await storyStorage.getLocalStories();
-            if (localData.length > 0) {
-                setStories(localData);
-                setLoading(false); // Show content immediately
+
+            // 2. Página da nuvem
+            const pageData = await storyStorage.getStoriesPage(page, pageSize);
+
+            // Na primeira página, mescla as histórias que existem só localmente
+            // (ex.: que não sincronizaram) para que nenhuma suma do dashboard.
+            let list = pageData.stories;
+            if (page === 0) {
+                const cloudIds = new Set(list.map(s => s.id));
+                const localOnly = localData.filter(s => !cloudIds.has(s.id));
+                list = [...list, ...localOnly].sort((a, b) => b.updatedAt - a.updatedAt);
             }
 
-            // 2. Background Sync (Cloud)
-            const syncedData = await storyStorage.getAllStories();
-            // Only update if we have different data or if we were empty
-            setStories(syncedData);
+            setStories(list);
+            // Total inclui as locais não sincronizadas para a contagem de páginas ficar coerente.
+            const localOnlyCount = localData.filter(s => !new Set(pageData.stories.map(c => c.id)).has(s.id)).length;
+            setTotal(pageData.total + (page === 0 ? localOnlyCount : 0));
 
         } catch (error) {
             console.error('Error loading stories:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    const handlePageSizeChange = (newSize: number) => {
+        setPageSize(newSize);
+        setPage(0);
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
@@ -92,7 +112,7 @@ export function Dashboard() {
                 </div>
             ) : (
                 // Grid of Stories
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                     {stories.map((story) => {
                         const steps = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
                         const currentStepIndex = steps.indexOf(story.data?.currentStep ?? 'CONFIG');
@@ -188,6 +208,46 @@ export function Dashboard() {
                             </div>
                         );
                     })}
+                </div>
+            )}
+            
+            {!loading && stories.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pb-8">
+                    {/* Seletor de itens por página */}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>Por página:</span>
+                        <select
+                            value={pageSize}
+                            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                            className="bg-card border border-border rounded-lg px-3 py-1.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                            {PAGE_SIZE_OPTIONS.map(size => (
+                                <option key={size} value={size}>{size}</option>
+                            ))}
+                        </select>
+                        <span className="ml-2">{total} {total === 1 ? 'história' : 'histórias'}</span>
+                    </div>
+
+                    {/* Navegação de páginas */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setPage(p => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                            className="px-4 py-1.5 bg-secondary text-secondary-foreground font-medium rounded-lg hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Anterior
+                        </button>
+                        <span className="text-sm text-muted-foreground px-2">
+                            Página {page + 1} de {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                            disabled={page >= totalPages - 1}
+                            className="px-4 py-1.5 bg-secondary text-secondary-foreground font-medium rounded-lg hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Próxima
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

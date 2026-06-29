@@ -6,6 +6,9 @@
 
 import { StudioState } from '../types/studio';
 import { supabase } from './supabase';
+import { handleSupabaseAuthError } from './supabaseErrors';
+
+export const STORY_LIST_FIELDS = 'id, title, created_at, updated_at, preview_image, is_complete, currentStep:data->>currentStep';
 
 // --- Types ---
 
@@ -14,9 +17,132 @@ export interface StoryProject {
     title: string;
     createdAt: number;
     updatedAt: number;
-    previewImage?: string; // Thumbnail URL (Base64)
+    previewImage?: string; // Thumbnail URL (Base64 or Cloud URL)
     data: StudioState; // Full state of the studio for this story
     isComplete: boolean;
+}
+
+// --- Upload Helpers ---
+
+export function isDataUrl(value: string | undefined | null): boolean {
+    return !!value && typeof value === 'string' && value.startsWith('data:');
+}
+
+export function dataUrlToBlob(dataUrl: string): Blob {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || '';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+}
+
+export function getDataUrlMimeType(dataUrl: string): string {
+    return dataUrl.split(',')[0].match(/:(.*?);/)?.[1] || '';
+}
+
+export async function uploadStoryDataUrl(
+    userId: string,
+    bucket: string,
+    path: string,
+    dataUrl: string
+): Promise<string> {
+    if (!isDataUrl(dataUrl)) return dataUrl;
+
+    const blob = dataUrlToBlob(dataUrl);
+    const contentType = getDataUrlMimeType(dataUrl);
+
+    const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(`${userId}/${path}`, blob, { 
+            upsert: true,
+            contentType,
+            cacheControl: '604800'
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(`${userId}/${path}`);
+
+    return data.publicUrl;
+}
+
+export async function sanitizeStudioStateMedia(storyId: string, userId: string, state: StudioState): Promise<StudioState> {
+    // Clone state deeply
+    const sanitized = JSON.parse(JSON.stringify(state)) as StudioState;
+
+    // story.audioUrl
+    if (isDataUrl(sanitized.story?.audioUrl)) {
+        sanitized.story!.audioUrl = await uploadStoryDataUrl(
+            userId, 'story-audio', `${storyId}/narration.wav`, sanitized.story!.audioUrl!
+        );
+    }
+
+    // storyWithScenes.thumbnailUrl
+    if (isDataUrl(sanitized.storyWithScenes?.thumbnailUrl)) {
+        sanitized.storyWithScenes!.thumbnailUrl = await uploadStoryDataUrl(
+            userId, 'thumbnails', `${storyId}/thumbnail.png`, sanitized.storyWithScenes!.thumbnailUrl!
+        );
+    }
+
+    // storyWithScenes.scenes[].imageUrl
+    if (sanitized.storyWithScenes?.scenes) {
+        for (let i = 0; i < sanitized.storyWithScenes.scenes.length; i++) {
+            const scene = sanitized.storyWithScenes.scenes[i];
+            if (isDataUrl(scene.imageUrl)) {
+                scene.imageUrl = await uploadStoryDataUrl(
+                    userId, 'thumbnails', `${storyId}/scene-${i + 1}.png`, scene.imageUrl!
+                );
+            }
+        }
+    }
+
+    // storyWithScenes.characterReferenceImages
+    if (sanitized.storyWithScenes?.characterReferenceImages) {
+        for (const [charName, imageUrl] of Object.entries(sanitized.storyWithScenes.characterReferenceImages)) {
+            if (isDataUrl(imageUrl as string)) {
+                // sanitize character name for filename
+                const safeName = charName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                sanitized.storyWithScenes!.characterReferenceImages![charName] = await uploadStoryDataUrl(
+                    userId, 'thumbnails', `${storyId}/character-${safeName}.png`, imageUrl as string
+                );
+            }
+        }
+    }
+
+    // storyWithScenes.audioUrls
+    if (sanitized.storyWithScenes?.audioUrls) {
+        for (const [indexStr, audioUrl] of Object.entries(sanitized.storyWithScenes.audioUrls)) {
+            if (isDataUrl(audioUrl as string)) {
+                sanitized.storyWithScenes!.audioUrls![parseInt(indexStr)] = await uploadStoryDataUrl(
+                    userId, 'story-audio', `${storyId}/scene-${parseInt(indexStr) + 1}.wav`, audioUrl as string
+                );
+            }
+        }
+    }
+
+    // timeline.clips[].imageUrl and audioUrl
+    if (sanitized.timeline?.clips) {
+        for (const clip of sanitized.timeline.clips) {
+            if (isDataUrl(clip.imageUrl)) {
+                clip.imageUrl = await uploadStoryDataUrl(
+                    userId, 'thumbnails', `${storyId}/clip-${clip.id}.png`, clip.imageUrl!
+                );
+            }
+            if (isDataUrl(clip.audioUrl)) {
+                clip.audioUrl = await uploadStoryDataUrl(
+                    userId, 'story-audio', `${storyId}/clip-${clip.id}.wav`, clip.audioUrl!
+                );
+            }
+        }
+    }
+
+    return sanitized;
 }
 
 // --- IndexedDB Implementation (Local) ---
@@ -103,10 +229,13 @@ const supabaseStoryStorage = {
     async getAllStories(): Promise<StoryProject[]> {
         const { data, error } = await supabase
             .from('stories')
-            .select('id, title, created_at, updated_at, preview_image, is_complete, currentStep:data->>currentStep')
+            .select(STORY_LIST_FIELDS)
             .order('updated_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+            await handleSupabaseAuthError(error);
+            throw error;
+        }
 
         return data.map(record => ({
             id: record.id,
@@ -119,6 +248,38 @@ const supabaseStoryStorage = {
         }));
     },
 
+    async getStoriesPage(page: number, pageSize: number): Promise<{ stories: StoryProject[], total: number, page: number, pageSize: number, hasMore: boolean }> {
+        const { data, error, count } = await supabase
+            .from('stories')
+            .select(STORY_LIST_FIELDS, { count: 'exact' })
+            .order('updated_at', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) {
+            await handleSupabaseAuthError(error);
+            throw error;
+        }
+
+        const stories = data.map(record => ({
+            id: record.id,
+            title: record.title,
+            createdAt: new Date(record.created_at).getTime(),
+            updatedAt: new Date(record.updated_at).getTime(),
+            previewImage: record.preview_image,
+            data: { currentStep: record.currentStep || 'CONFIG' } as StudioState,
+            isComplete: record.is_complete
+        }));
+
+        const total = count || 0;
+        return {
+            stories,
+            total,
+            page,
+            pageSize,
+            hasMore: (page + 1) * pageSize < total
+        };
+    },
+
     async getStory(id: string): Promise<StoryProject | undefined> {
         const { data, error } = await supabase
             .from('stories')
@@ -126,7 +287,10 @@ const supabaseStoryStorage = {
             .eq('id', id)
             .maybeSingle();
 
-        if (error) return undefined;
+        if (error) {
+            await handleSupabaseAuthError(error);
+            return undefined;
+        }
         if (!data) return undefined;
 
         return {
@@ -140,37 +304,22 @@ const supabaseStoryStorage = {
         };
     },
 
-    async saveStory(story: StoryProject): Promise<void> {
+    async saveStory(story: StoryProject): Promise<StoryProject> {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Usuario deve estar logado para salvar na nuvem.');
 
+        // 1. Sanitize the entire StudioState and previewImage
+        const sanitizedState = await sanitizeStudioStateMedia(story.id, user.id, story.data);
+        
         let previewImageUrl = story.previewImage;
-
-        // 1. Upload Thumbnail to Storage (if Base64)
-        if (previewImageUrl && previewImageUrl.startsWith('data:image')) {
-            try {
-                const response = await fetch(previewImageUrl);
-                const blob = await response.blob();
-                const fileName = `${story.id}_thumbnail.png`;
-                const filePath = `${user.id}/${fileName}`;
-
-                const { error: uploadError } = await supabase.storage
-                    .from('thumbnails')
-                    .upload(filePath, blob, { upsert: true });
-
-                if (!uploadError) {
-                    const { data: { publicUrl } } = supabase.storage
-                        .from('thumbnails')
-                        .getPublicUrl(filePath);
-                    previewImageUrl = publicUrl;
-                }
-            } catch (err) {
-                console.warn('[storyStorage] Thumbnail upload failed:', err);
-            }
+        if (isDataUrl(previewImageUrl)) {
+            previewImageUrl = await uploadStoryDataUrl(
+                user.id, 'thumbnails', `${story.id}/thumbnail.png`, previewImageUrl!
+            );
         }
 
         // 2. Prepare Metadata
-        const { config, story: storyData, storyWithScenes } = story.data;
+        const { config, story: storyData, storyWithScenes } = sanitizedState;
 
         // Construct DB Record with new columns
         const dbRecord = {
@@ -178,7 +327,7 @@ const supabaseStoryStorage = {
             user_id: user.id,
             title: story.title,
             preview_image: previewImageUrl,
-            data: story.data,
+            data: sanitizedState,
             is_complete: story.isComplete,
             updated_at: new Date().toISOString(),
             // Metadata columns
@@ -198,7 +347,16 @@ const supabaseStoryStorage = {
             .from('stories')
             .upsert(dbRecord, { onConflict: 'id' });
 
-        if (error) throw error;
+        if (error) {
+            await handleSupabaseAuthError(error);
+            throw error;
+        }
+
+        return {
+            ...story,
+            previewImage: previewImageUrl,
+            data: sanitizedState
+        };
     },
 
     async deleteStory(id: string): Promise<void> {
@@ -207,7 +365,10 @@ const supabaseStoryStorage = {
             .delete()
             .eq('id', id);
 
-        if (error) throw error;
+        if (error) {
+            await handleSupabaseAuthError(error);
+            throw error;
+        }
     }
 };
 
@@ -257,6 +418,32 @@ export const storyStorage = {
         return await localFetch;
     },
 
+    async getStoriesPage(page: number, pageSize: number = 20): Promise<{ stories: StoryProject[], total: number, page: number, pageSize: number, hasMore: boolean }> {
+        const isAuth = await this.isAuthenticated();
+
+        if (isAuth) {
+            try {
+                const cloudFetch = supabaseStoryStorage.getStoriesPage(page, pageSize);
+                const timeout = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Cloud fetch timed out')), 15000)
+                );
+                return await Promise.race([cloudFetch, timeout]);
+            } catch (err) {
+                console.warn('[storyStorage] Supabase paginated fetch failed or timed out:', err);
+            }
+        }
+
+        // Fallback to local (just return all local stories as page 0, no pagination)
+        const localStories = await localStoryStorage.getAllStories();
+        return {
+            stories: localStories,
+            total: localStories.length,
+            page: 0,
+            pageSize: localStories.length,
+            hasMore: false
+        };
+    },
+
     async getLocalStory(id: string): Promise<StoryProject | undefined> {
         return localStoryStorage.getStory(id);
     },
@@ -294,7 +481,9 @@ export const storyStorage = {
 
         if (await this.isAuthenticated()) {
             try {
-                await supabaseStoryStorage.saveStory(story);
+                const sanitizedStory = await supabaseStoryStorage.saveStory(story);
+                // Update local storage with the sanitized version (URLs instead of base64)
+                await localStoryStorage.saveStory(sanitizedStory);
             } catch (err) {
                 console.warn('[storyStorage] Supabase save failed, data saved locally:', err);
                 // Don't throw - local save was successful

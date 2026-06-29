@@ -92,7 +92,7 @@ using (auth.uid() = user_id);
 
 
 -- Add Missing Columns to Stories Table
-alter table public.stories 
+alter table public.stories
 add column if not exists narration_text text,
 add column if not exists tone text,
 add column if not exists age_group text,
@@ -101,7 +101,29 @@ add column if not exists story_text text,
 add column if not exists custom_instructions text,
 add column if not exists full_audio_url text,
 add column if not exists character_descriptions jsonb,
-add column if not exists generation_metadata jsonb;
+add column if not exists generation_metadata jsonb,
+-- Colunas gravadas por storyStorage.saveStory (sem elas o upsert na nuvem falhava silenciosamente)
+add column if not exists visual_style text,
+add column if not exists status text;
 
 -- Optional: Create index for better filtering if needed
 create index if not exists idx_stories_user_id on public.stories(user_id);
+
+-- Storage (Story Audio)
+insert into storage.buckets (id, name, public)
+values ('story-audio', 'story-audio', true)
+on conflict (id) do update set public = true;
+
+-- Storage Policies (Story Audio)
+drop policy if exists "Authenticated users can upload story audio" on storage.objects;
+drop policy if exists "Public Access to story audio" on storage.objects;
+
+create policy "Authenticated users can upload story audio"
+on storage.objects for insert
+to authenticated
+with check ( bucket_id = 'story-audio' );
+
+create policy "Public Access to story audio"
+on storage.objects for select
+to public
+using ( bucket_id = 'story-audio' );

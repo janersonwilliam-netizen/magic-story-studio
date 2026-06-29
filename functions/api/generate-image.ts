@@ -11,6 +11,20 @@ import { getVertexToken } from '../_shared/vertexAuth';
 interface Env {
   GCP_PROJECT_ID: string;
   GCP_CREDENTIALS_JSON: string;
+  IMAGES_BUCKET?: R2Bucket;
+}
+
+async function uploadToR2(bucket: R2Bucket, base64: string, mimeType: string): Promise<string> {
+  const ext = mimeType.includes('png') ? 'png' : 'jpg';
+  const key = `scenes/${crypto.randomUUID()}.${ext}`;
+  const imageBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  await bucket.put(key, imageBytes, { httpMetadata: { contentType: mimeType } });
+  return `/api/image/${key}`;
+}
+
+function imageResponse(base64: string, mimeType: string, url?: string): Response {
+  if (url) return Response.json({ url, mimeType });
+  return Response.json({ base64, mimeType });
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -80,7 +94,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       const responseParts = data.candidates?.[0]?.content?.parts || [];
       for (const part of responseParts) {
         if (part.inlineData?.mimeType?.startsWith('image/')) {
-          return Response.json({ base64: part.inlineData.data, mimeType: part.inlineData.mimeType });
+          const r2Url = env.IMAGES_BUCKET ? await uploadToR2(env.IMAGES_BUCKET, part.inlineData.data, part.inlineData.mimeType) : undefined;
+          return imageResponse(part.inlineData.data, part.inlineData.mimeType, r2Url);
         }
       }
 
@@ -111,7 +126,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         for (const part of safeParts) {
           if (part.inlineData?.mimeType?.startsWith('image/')) {
             console.log('[generate-image] Safe fallback succeeded!');
-            return Response.json({ base64: part.inlineData.data, mimeType: part.inlineData.mimeType });
+            const r2Url = env.IMAGES_BUCKET ? await uploadToR2(env.IMAGES_BUCKET, part.inlineData.data, part.inlineData.mimeType) : undefined;
+          return imageResponse(part.inlineData.data, part.inlineData.mimeType, r2Url);
           }
         }
       }
@@ -151,7 +167,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       const responseParts = data.candidates?.[0]?.content?.parts || [];
       for (const part of responseParts) {
         if (part.inlineData?.mimeType?.startsWith('image/')) {
-          return Response.json({ base64: part.inlineData.data, mimeType: part.inlineData.mimeType });
+          const r2Url = env.IMAGES_BUCKET ? await uploadToR2(env.IMAGES_BUCKET, part.inlineData.data, part.inlineData.mimeType) : undefined;
+          return imageResponse(part.inlineData.data, part.inlineData.mimeType, r2Url);
         }
       }
 

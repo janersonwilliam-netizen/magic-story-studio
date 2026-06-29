@@ -9,7 +9,7 @@ import { motion } from 'framer-motion';
 import { StoryWithScenes } from '../../types/studio';
 import { translateTitle } from '../../services/gemini';
 import { generateImageWithReferences } from '../../services/google_image';
-import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, User } from 'lucide-react';
+import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, User, Download } from 'lucide-react';
 
 interface ThumbnailPageProps {
     storyWithScenes: StoryWithScenes;
@@ -77,6 +77,16 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
 
     // If the thumbnail URL is already set, we assume the initial (likely Portuguese) one is done
     const initialGenerated = !!images.original;
+
+    const handleDownload = (e: React.MouseEvent, url: string, filename: string) => {
+        e.stopPropagation();
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
 
     const generateThumbnail = async (language: 'original' | 'english' | 'spanish' = 'original') => {
         if (!introScene) return;
@@ -274,6 +284,13 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                                             <Check className="w-4 h-4" />
                                         </div>
                                     )}
+                                    <button 
+                                        onClick={(e) => handleDownload(e, images.original!, 'capa_original.png')}
+                                        className="absolute bottom-2 right-2 bg-black/60 hover:bg-primary text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+                                        title="Baixar imagem"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
                                 </>
                             ) : (
                                 <div className="absolute inset-0 flex items-center justify-center bg-muted/30 text-muted-foreground/50">
@@ -303,6 +320,13 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                                                 <Check className="w-4 h-4" />
                                             </div>
                                         )}
+                                        <button 
+                                            onClick={(e) => handleDownload(e, images.english!, 'capa_english.png')}
+                                            className="absolute bottom-2 right-2 bg-black/60 hover:bg-blue-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+                                            title="Baixar imagem"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                        </button>
                                     </>
                                 ) : (
                                     <div className="absolute inset-0 flex items-center justify-center bg-blue-50 text-blue-400">
@@ -333,6 +357,13 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                                                 <Check className="w-4 h-4" />
                                             </div>
                                         )}
+                                        <button 
+                                            onClick={(e) => handleDownload(e, images.spanish!, 'capa_spanish.png')}
+                                            className="absolute bottom-2 right-2 bg-black/60 hover:bg-orange-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+                                            title="Baixar imagem"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                        </button>
                                     </>
                                 ) : (
                                     <div className="absolute inset-0 flex items-center justify-center bg-orange-50 text-orange-400">

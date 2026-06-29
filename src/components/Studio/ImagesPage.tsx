@@ -129,7 +129,7 @@ function buildCharacterDescriptionsMap(characters: Record<string, CharacterDNA>)
     return descriptions;
 }
 
-export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPageProps) {
+export function ImagesPage({ storyWithScenes, onComplete, onPartialUpdate, onBack }: ImagesPageProps) {
     const [generationStatus, setGenerationStatus] = useState<Record<string, ImageGenerationStatus>>({});
     const [generating, setGenerating] = useState(false);
     const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
@@ -208,24 +208,67 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
 
                 const characterDescriptionsMap = buildCharacterDescriptionsMap(storyWithScenes.characters || {});
 
-                const promptSeed = [
-                    scene.visualDescription,
-                    scene.imagePrompt && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
-                        ? `Extra scene-specific direction from storyboard: ${scene.imagePrompt}`
-                        : ''
-                ].filter(Boolean).join('\n');
+                // Build character description prefix for visual consistency
+                const characterDescPrefix = resolvedCharacters
+                    .map(name => characterDescriptionsMap[name])
+                    .filter(Boolean)
+                    .map(desc => `CRITICAL CHARACTER APPEARANCE (must match exactly): ${desc.substring(0, 280)}`)
+                    .join('. ');
 
-                const promptResult = await generateImagePrompt({
-                    visual_description: promptSeed,
-                    emotion: scene.emotion,
-                    characters: resolvedCharacters,
-                    visual_style: storyWithScenes.visualStyle,
-                    characterDescriptions: characterDescriptionsMap,
-                    sceneIndex: i,
-                    totalScenes: storyWithScenes.scenes.length
-                });
+                // Style string based on visual style
+                const is2D = storyWithScenes.visualStyle === 'Estilo 2D Cartoon';
+                const styleStr = is2D
+                    ? 'Premium 2D cartoon illustration, modern Disney 2D style, vibrant colors, crisp clean outlines, animated children storybook style, NO 3D, NO CGI'
+                    : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, vibrant colors';
 
-                const optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
+                // If the scene has a rich imagePrompt (from backend rawScenes), use it directly.
+                // It already contains the correct setting, action, and all visual details.
+                const hasRichImagePrompt = !!(scene.imagePrompt
+                    && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
+                    && scene.imagePrompt.length > 80);
+
+                // Trecho real da narração desta cena — garante que a imagem ilustre o evento certo.
+                const narrationBeat = (scene.narrationText || '').replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+                const beatDirective = narrationBeat
+                    ? `Depict THIS exact story moment as a purely visual illustration (do NOT write any of these words inside the image), including every character, action, object and place that appears in it: ${narrationBeat.replace(/["'“”‘’«»]/g, '').substring(0, 500)}`
+                    : '';
+
+                let optimizedPrompt: string;
+
+                if (hasRichImagePrompt) {
+                    // Ação da cena PRIMEIRO (não pode ser truncada), depois o personagem.
+                    optimizedPrompt = [
+                        scene.imagePrompt,
+                        beatDirective,
+                        characterDescPrefix,
+                        'CRITICAL: Show the full action of the scene with all its elements, not just a character posing. Do NOT change the time of day, location, or setting described above.',
+                        styleStr,
+                        `${scene.emotion || 'cheerful'} mood`,
+                        'fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9',
+                        'IMPORTANT: render the scene as a purely visual illustration with NO text, NO letters, NO words, NO captions, NO subtitles, NO speech bubbles and NO writing of any kind anywhere in the image'
+                    ].filter(Boolean).join('. ');
+                } else {
+                    // Fallback: reconstruct from visualDescription
+                    const promptSeed = [
+                        scene.visualDescription,
+                        beatDirective,
+                        scene.imagePrompt && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
+                            ? `Extra scene-specific direction: ${scene.imagePrompt}`
+                            : ''
+                    ].filter(Boolean).join('\n');
+
+                    const promptResult = await generateImagePrompt({
+                        visual_description: promptSeed,
+                        emotion: scene.emotion,
+                        characters: resolvedCharacters,
+                        visual_style: storyWithScenes.visualStyle,
+                        characterDescriptions: characterDescriptionsMap,
+                        sceneIndex: i,
+                        totalScenes: storyWithScenes.scenes.length
+                    });
+                    optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
+                }
+
 
                 console.log(`[ImagesPage] Using prompt for scene ${scene.order}:`, optimizedPrompt);
 
@@ -282,6 +325,14 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
                 scene.imageUrl = imageUrl;
                 scene.imagePrompt = optimizedPrompt;
 
+                if (onPartialUpdate) {
+                    onPartialUpdate({
+                        ...storyWithScenes,
+                        scenes: [...storyWithScenes.scenes]
+                    });
+                }
+
+
             } catch (error: any) {
                 console.error(`[ImagesPage] Error generating image for scene ${scene.order}:`, error);
 
@@ -319,26 +370,63 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
 
             const characterDescriptions = buildCharacterDescriptionsMap(storyWithScenes.characters || {});
 
-            const sceneIndex = Math.max(0, storyWithScenes.scenes.findIndex(item => item.id === scene.id));
-            const promptSeed = [
-                scene.visualDescription,
-                scene.imagePrompt && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
-                    ? `Extra scene-specific direction from storyboard: ${scene.imagePrompt}`
-                    : ''
-            ].filter(Boolean).join('\n');
+            // Build character description prefix for visual consistency
+            const characterDescPrefix = resolvedCharacters
+                .map(name => characterDescriptions[name])
+                .filter(Boolean)
+                .map(desc => `CRITICAL CHARACTER APPEARANCE (must match exactly): ${desc.substring(0, 280)}`)
+                .join('. ');
 
-            const promptResult = await generateImagePrompt({
-                visual_description: promptSeed,
-                emotion: scene.emotion,
-                characters: resolvedCharacters,
-                visual_style: storyWithScenes.visualStyle,
-                characterDescriptions,
-                sceneIndex,
-                totalScenes: storyWithScenes.scenes.length
-            });
+            const is2D = storyWithScenes.visualStyle === 'Estilo 2D Cartoon';
+            const styleStr = is2D
+                ? 'Premium 2D cartoon illustration, modern Disney 2D style, vibrant colors, crisp clean outlines, animated children storybook style, NO 3D, NO CGI'
+                : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, vibrant colors';
 
-            // generateImagePrompt returns a string directly
-            const optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
+            const hasRichImagePrompt = !!(scene.imagePrompt
+                && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
+                && scene.imagePrompt.length > 80);
+
+            // Trecho real da narração desta cena — garante que a imagem ilustre o evento certo.
+            const narrationBeat = (scene.narrationText || '').replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+            const beatDirective = narrationBeat
+                ? `Depict THIS exact story moment as a purely visual illustration (do NOT write any of these words inside the image), including every character, action, object and place that appears in it: ${narrationBeat.replace(/["'“”‘’«»]/g, '').substring(0, 500)}`
+                : '';
+
+            let optimizedPrompt: string;
+
+            if (hasRichImagePrompt) {
+                // Ação da cena PRIMEIRO (não pode ser truncada), depois o personagem.
+                optimizedPrompt = [
+                    scene.imagePrompt,
+                    beatDirective,
+                    characterDescPrefix,
+                    'CRITICAL: Show the full action of the scene with all its elements, not just a character posing. Do NOT change the time of day, location, or setting described above.',
+                    styleStr,
+                    `${scene.emotion || 'cheerful'} mood`,
+                    'fully detailed environment background, NO white background, NO plain background, children book illustration, widescreen 16:9'
+                ].filter(Boolean).join('. ');
+            } else {
+                const sceneIndex = Math.max(0, storyWithScenes.scenes.findIndex(item => item.id === scene.id));
+                const promptSeed = [
+                    scene.visualDescription,
+                    beatDirective,
+                    scene.imagePrompt && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
+                        ? `Extra scene-specific direction: ${scene.imagePrompt}`
+                        : ''
+                ].filter(Boolean).join('\n');
+
+                const promptResult = await generateImagePrompt({
+                    visual_description: promptSeed,
+                    emotion: scene.emotion,
+                    characters: resolvedCharacters,
+                    visual_style: storyWithScenes.visualStyle,
+                    characterDescriptions,
+                    sceneIndex,
+                    totalScenes: storyWithScenes.scenes.length
+                });
+                optimizedPrompt = typeof promptResult === 'string' ? promptResult : (promptResult as any).optimized_prompt || promptResult;
+            }
+
 
             // Collect reference images using the same logic as startGeneration
             const characterReferences = storyWithScenes.characterReferenceImages || {};
@@ -380,6 +468,14 @@ export function ImagesPage({ storyWithScenes, onComplete, onBack }: ImagesPagePr
 
             scene.imageUrl = imageUrl;
             scene.imagePrompt = optimizedPrompt;
+
+            if (onPartialUpdate) {
+                onPartialUpdate({
+                    ...storyWithScenes,
+                    scenes: [...storyWithScenes.scenes]
+                });
+            }
+
 
         } catch (error: any) {
             console.error(`[ImagesPage] Error regenerating scene ${scene.order}:`, error);
