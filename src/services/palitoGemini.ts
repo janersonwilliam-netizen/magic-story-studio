@@ -191,18 +191,27 @@ export async function generatePalitoThumbnailData(title: string): Promise<Palito
 
 Título do vídeo: "${title}"
 
-Nas capas virais desse estilo, o título é dividido em DUAS partes com duas cores:
-- Parte vermelha: 1 a 2 palavras de impacto no início (ex: "O SEGREDO", "TÉCNICA", "PRÊMIO")
-- Parte preta: o complemento (ex: "DA COPA!", "JAPONESA", "MILIONÁRIO!")
+Sua tarefa é criar uma FRASE GANCHO para a CAPA — ela NÃO deve repetir o título. Deve ser uma frase curta (4 a 7 palavras no total) que gere choque, curiosidade ou surpresa sobre o tema, como se fosse a reação do espectador ao assistir o vídeo.
 
-Também identifique 2 objetos concretos do tema e a ação do personagem.
+Exemplos de frases gancho (para títulos sobre diferentes temas):
+- Título "Como era a noite dos humanos antigos?" → gancho: "ELES NUNCA DORMIAM DE NOITE!"
+- Título "Quanto ganha um astronauta?" → gancho: "SALÁRIO VAI TE CHOCAR"
+- Título "Por que choramos quando cortamos cebola?" → gancho: "A CIÊNCIA É ABSURDA"
+- Título "Como funciona o Wi-Fi?" → gancho: "NINGUÉM TE CONTOU ISSO"
+- Título "O que acontece com seu corpo sem dormir?" → gancho: "SEU CÉREBRO PARA DE FUNCIONAR"
+
+A frase gancho deve ser dividida em DUAS partes:
+- Parte vermelha: 1 a 3 palavras de maior impacto emocional (ex: "ELES NUNCA", "SALÁRIO", "A CIÊNCIA")
+- Parte preta: complemento que fecha o sentido (ex: "DORMIAM DE NOITE!", "VAI TE CHOCAR", "É ABSURDA")
+
+Também identifique 2 objetos visuais concretos que representem bem o TEMA do vídeo.
 
 Retorne APENAS um JSON válido (sem markdown, sem explicações):
 {
-  "textRed": "1 a 2 palavras em MAIÚSCULAS em português que vão em VERMELHO — ex: O SEGREDO, TÉCNICA, PRÊMIO",
-  "textBlack": "restante do título em MAIÚSCULAS em português que vai em PRETO — ex: DA COPA!, JAPONESA, MILIONÁRIO!",
-  "object1": "objeto principal em inglês, específico e concreto — ex: giant golden FIFA World Cup trophy, large human brain, stack of dollar bills",
-  "object2": "segundo objeto em inglês — ex: pile of coins, soccer ball, lightning bolt",
+  "textRed": "1 a 3 palavras de impacto em MAIÚSCULAS em português — parte vermelha da frase gancho",
+  "textBlack": "complemento em MAIÚSCULAS em português — parte preta da frase gancho",
+  "object1": "objeto principal em inglês, específico e concreto ligado ao tema — ex: ancient campfire with flames, large human brain, stack of dollar bills",
+  "object2": "segundo objeto em inglês ligado ao tema — ex: crescent moon with stars, DNA double helix, lightning bolt",
   "characterAction": "ação do personagem em inglês — ex: pointing at object1 with one arm extended and jaw dropped open, eyes wide and arms raised"
 }`;
 

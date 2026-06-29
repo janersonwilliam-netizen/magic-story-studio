@@ -101,7 +101,7 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
 
                     {/* Text preview */}
                     <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-3">Texto de destaque — preview</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-3">Frase gancho da capa — preview</p>
                         <div className="bg-white rounded-lg px-5 py-4 text-center">
                             <span
                                 className="font-black uppercase"
@@ -121,7 +121,7 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
                     {/* Editable fields */}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium" style={{ color: '#E24B4A' }}>Parte vermelha (impacto)</label>
+                            <label className="text-xs font-medium" style={{ color: '#E24B4A' }}>Parte vermelha — impacto</label>
                             <input
                                 type="text"
                                 value={textRed}
@@ -133,7 +133,7 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-gray-300">Parte preta (complemento)</label>
+                            <label className="text-xs font-medium text-gray-300">Parte preta — complemento</label>
                             <input
                                 type="text"
                                 value={textBlack}
