@@ -55,9 +55,9 @@ export function ScenesPage({ title, transcription, characterImageUrl, storyChara
             const scene = scenes[i];
             const sceneTextLower = scene.text.toLowerCase();
 
-            // Collect reference images: narrator + any story character mentioned in scene text
+            // Collect reference images: story characters mentioned in scene text
+            // (narrator style is already baked into the prompt via STYLE_ANCHOR)
             const refs: string[] = [];
-            if (characterImageUrl) refs.push(characterImageUrl);
             for (const char of storyCharacters) {
                 if (char.imageUrl) {
                     const nameParts = char.name.toLowerCase().split(' ');

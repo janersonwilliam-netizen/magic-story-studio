@@ -4,47 +4,27 @@ import { generateImageWithNanoBanana } from '../../services/google_image';
 import { extractStoryCharacters } from '../../services/palitoGemini';
 import { StoryCharacter } from '../../types/palito';
 
-const NARRATOR_PROMPT = `Hand-drawn 2D doodle animation style, flat colors, thick black outlines, slightly imperfect marker lines. Character in neutral standing pose, centered, pure white background (#FFFFFF). Large circular head filled white, thick black outline. Hair: 4 to 5 short thin diagonal lines at top of head, slightly spiky, hand-drawn style. Eyes: two small black dots, positioned center-lower area of the head. Eyebrows: two short straight thin lines slightly angled down toward center. Mouth: straight line (neutral expression). Medium gray t-shirt (#9E9E9E), round collar, short sleeves. Dark gray shorts (#555555). Arms: thin black lines from shoulders, small circular white fists with black outline. Legs: thin black lines, small slightly flat oval white feet with black outline. Light gray flattened oval shadow beneath feet. No shading, no gradient, no textures, no photorealism, no 3D, no anime style, 1:1 ratio, pure white background, educational YouTube doodle channel style.`;
-
 const STORY_CHAR_STYLE = `Hand-drawn 2D doodle animation style, flat colors, thick black outlines, slightly imperfect marker lines. Character in neutral standing pose, centered, pure white background. No shading, no gradient, no textures, no photorealism, no 3D, no anime style, 1:1 ratio, pure white background, educational YouTube doodle channel style.`;
 
 interface CharacterPageProps {
     title: string;
     script: string;
-    existingNarratorUrl?: string;
     existingStoryCharacters?: StoryCharacter[];
-    onComplete: (narratorUrl: string, storyCharacters: StoryCharacter[]) => void;
+    onComplete: (storyCharacters: StoryCharacter[]) => void;
     onBack: () => void;
 }
 
 export function CharacterPage({
     title,
     script,
-    existingNarratorUrl,
     existingStoryCharacters,
     onComplete,
     onBack,
 }: CharacterPageProps) {
-    const [narratorUrl, setNarratorUrl] = useState(existingNarratorUrl || '');
-    const [narratorLoading, setNarratorLoading] = useState(false);
-
     const [storyChars, setStoryChars] = useState<StoryCharacter[]>(existingStoryCharacters || []);
     const [extracting, setExtracting] = useState(false);
     const [generatingIdx, setGeneratingIdx] = useState<number | null>(null);
     const [error, setError] = useState('');
-
-    const handleGenerateNarrator = async () => {
-        setNarratorLoading(true);
-        setError('');
-        try {
-            const url = await generateImageWithNanoBanana(NARRATOR_PROMPT);
-            setNarratorUrl(url);
-        } catch (e: any) {
-            setError(e.message || 'Erro ao gerar narrador.');
-        } finally {
-            setNarratorLoading(false);
-        }
-    };
 
     const handleExtractCharacters = async () => {
         setExtracting(true);
@@ -74,54 +54,24 @@ export function CharacterPage({
         }
     };
 
-    const canAdvance = !!narratorUrl;
-
     return (
-        <div className="max-w-3xl mx-auto space-y-8">
+        <div className="max-w-3xl mx-auto space-y-6">
             <div>
                 <h2 className="text-2xl font-bold text-white mb-1">Personagens</h2>
-                <p className="text-gray-400 text-sm">Gere o narrador fixo e os personagens da história para usar como referência nas cenas.</p>
+                <p className="text-gray-400 text-sm">Identifique os personagens da história para usar como referência visual nas cenas.</p>
             </div>
 
-            {/* ── NARRADOR ── */}
-            <div className="space-y-4">
-                <div className="flex items-center gap-2">
+            {/* Narrador fixo — apenas informativo */}
+            <div className="bg-[#1a1a1c] border border-border rounded-xl p-4 flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg shrink-0">
                     <User className="h-4 w-4 text-primary" />
-                    <h3 className="text-base font-semibold text-white">Narrador (Boneco Palito)</h3>
-                    <span className="text-xs text-gray-500 bg-[#242426] px-2 py-0.5 rounded-full">fixo em todas as cenas</span>
                 </div>
-
-                <div className="bg-[#242426] border border-border rounded-xl p-4 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-400">
-                    <span>Cabeça circular grande, branca</span>
-                    <span>Cabelo: 4–5 riscos espetados</span>
-                    <span>Olhos: 2 pontos pretos</span>
-                    <span>Camiseta cinza médio #9E9E9E</span>
-                    <span>Shorts cinza escuro #555555</span>
-                    <span>Sombra oval achatada no chão</span>
+                <div>
+                    <p className="text-sm font-semibold text-white">Narrador — Boneco Palito</p>
+                    <p className="text-xs text-gray-500">DNA visual fixo — aplicado automaticamente em todas as cenas via prompt.</p>
                 </div>
-
-                <div className="flex gap-3 items-start">
-                    <button
-                        onClick={handleGenerateNarrator}
-                        disabled={narratorLoading}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                    >
-                        {narratorLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : narratorUrl ? <RefreshCw className="h-4 w-4" /> : <User className="h-4 w-4" />}
-                        {narratorLoading ? 'Gerando...' : narratorUrl ? 'Regenerar Narrador' : 'Gerar Narrador'}
-                    </button>
-
-                    {narratorUrl && !narratorLoading && (
-                        <div className="relative rounded-xl overflow-hidden bg-[#1a1a1c] border border-border w-20 h-20 shrink-0">
-                            <img src={narratorUrl} alt="Narrador" className="w-full h-full object-contain p-1" />
-                            <div className="absolute top-1 right-1 bg-green-600 rounded-full p-0.5">
-                                <CheckCircle className="h-3 w-3 text-white" />
-                            </div>
-                        </div>
-                    )}
-                </div>
+                <CheckCircle className="h-4 w-4 text-green-400 ml-auto shrink-0" />
             </div>
-
-            <div className="border-t border-border" />
 
             {/* ── PERSONAGENS DA HISTÓRIA ── */}
             <div className="space-y-4">
@@ -195,8 +145,8 @@ export function CharacterPage({
                     <ArrowLeft className="h-4 w-4" /> Voltar
                 </button>
                 <button
-                    onClick={() => onComplete(narratorUrl, storyChars)}
-                    disabled={!canAdvance}
+                    onClick={() => onComplete(storyChars)}
+                    disabled={false}
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
                     Avançar <ArrowRight className="h-4 w-4" />

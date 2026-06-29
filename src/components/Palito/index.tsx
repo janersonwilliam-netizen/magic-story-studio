@@ -235,11 +235,8 @@ export function PalitoIndex() {
                     <CharacterPage
                         title={state.selectedTitle || ''}
                         script={state.narrationScript}
-                        existingNarratorUrl={state.characterImageUrl}
                         existingStoryCharacters={state.storyCharacters}
-                        onComplete={(characterImageUrl, storyCharacters) =>
-                            advance('CHARACTER', { characterImageUrl, storyCharacters })
-                        }
+                        onComplete={storyCharacters => advance('CHARACTER', { storyCharacters })}
                         onBack={() => goToStep('TRANSCRIPTION')}
                     />
                 )}
