@@ -187,33 +187,30 @@ export interface PalitoThumbnailData {
 }
 
 export async function generatePalitoThumbnailData(title: string): Promise<PalitoThumbnailData> {
-    const directionPrompt = `Você é um diretor de arte de canal educativo doodle no YouTube (estilo Tudo Explicadim, Zenn, Me Poupe).
+    const directionPrompt = `Você é um especialista em capas virais de YouTube educativo (estilo Tudo Explicadim, Zenn, Me Poupe).
 
 Título do vídeo: "${title}"
 
-Sua tarefa é criar uma FRASE GANCHO para a CAPA — ela NÃO deve repetir o título. Deve ser uma frase curta (4 a 7 palavras no total) que gere choque, curiosidade ou surpresa sobre o tema, como se fosse a reação do espectador ao assistir o vídeo.
+REGRA MAIS IMPORTANTE: A frase da capa NUNCA pode conter as mesmas palavras do título. É uma frase COMPLETAMENTE DIFERENTE.
 
-Exemplos de frases gancho (para títulos sobre diferentes temas):
-- Título "Como era a noite dos humanos antigos?" → gancho: "ELES NUNCA DORMIAM DE NOITE!"
-- Título "Quanto ganha um astronauta?" → gancho: "SALÁRIO VAI TE CHOCAR"
-- Título "Por que choramos quando cortamos cebola?" → gancho: "A CIÊNCIA É ABSURDA"
-- Título "Como funciona o Wi-Fi?" → gancho: "NINGUÉM TE CONTOU ISSO"
-- Título "O que acontece com seu corpo sem dormir?" → gancho: "SEU CÉREBRO PARA DE FUNCIONAR"
+Crie uma FRASE GANCHO ORIGINAL de 4 a 6 palavras que cause choque ou curiosidade sobre o tema. Pense na REVELAÇÃO ou REAÇÃO que o vídeo entrega — não no título.
 
-A frase gancho deve ser dividida em DUAS partes:
-- Parte vermelha: 1 a 3 palavras de maior impacto emocional (ex: "ELES NUNCA", "SALÁRIO", "A CIÊNCIA")
-- Parte preta: complemento que fecha o sentido (ex: "DORMIAM DE NOITE!", "VAI TE CHOCAR", "É ABSURDA")
+EXEMPLOS DE TRANSFORMAÇÃO (observe como a frase é totalmente diferente do título):
+- Título: "Como era a noite dos humanos antigos?" → Frase: "ELES TINHAM MEDO DO ESCURO"
+- Título: "Quanto ganha um astronauta da NASA?" → Frase: "ESSE SALÁRIO VAI TE CHOCAR"
+- Título: "Por que choramos ao cortar cebola?" → Frase: "SEU OLHO ESTÁ SE DEFENDENDO"
+- Título: "Como funciona o motor de um carro?" → Frase: "POUCAS PESSOAS SABEM DISSO"
+- Título: "O que acontece com o corpo sem dormir?" → Frase: "SEU CÉREBRO COMEÇA A ALUCINAR"
+- Título: "Quem inventou o avião realmente?" → Frase: "A HISTÓRIA FOI ALTERADA"
 
-Também identifique 2 objetos visuais concretos que representem bem o TEMA do vídeo.
+A frase deve ser dividida em 2 partes:
+- textRed: 2 a 3 palavras — o trecho mais chocante ou emocional
+- textBlack: o restante que completa o sentido
 
-Retorne APENAS um JSON válido (sem markdown, sem explicações):
-{
-  "textRed": "1 a 3 palavras de impacto em MAIÚSCULAS em português — parte vermelha da frase gancho",
-  "textBlack": "complemento em MAIÚSCULAS em português — parte preta da frase gancho",
-  "object1": "objeto principal em inglês, específico e concreto ligado ao tema — ex: ancient campfire with flames, large human brain, stack of dollar bills",
-  "object2": "segundo objeto em inglês ligado ao tema — ex: crescent moon with stars, DNA double helix, lightning bolt",
-  "characterAction": "ação do personagem em inglês — ex: pointing at object1 with one arm extended and jaw dropped open, eyes wide and arms raised"
-}`;
+Também escolha 2 objetos visuais concretos do TEMA (não do título).
+
+Responda SOMENTE com JSON válido, sem markdown:
+{"textRed":"...","textBlack":"...","object1":"...","object2":"...","characterAction":"..."}`;
 
     for (let attempt = 0; attempt < 3; attempt++) {
         const raw = await callVertexText(directionPrompt, { temperature: 0.5 + attempt * 0.1, maxOutputTokens: 600 });
