@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { Layers, Loader2, RefreshCw, ArrowRight, ArrowLeft, CheckCircle, AlertCircle, ImageIcon } from 'lucide-react';
 import { generatePalitoScenePrompts } from '../../services/palitoGemini';
-import { generateImageWithNanoBanana } from '../../services/google_image';
-import { PalitoTranscriptionLine, PalitoSceneLine } from '../../types/palito';
+import { generateImageWithNanoBanana, generateImageWithReferences } from '../../services/google_image';
+import { PalitoTranscriptionLine, PalitoSceneLine, StoryCharacter } from '../../types/palito';
 
 interface ScenesPageProps {
     title: string;
     transcription: PalitoTranscriptionLine[];
     characterImageUrl: string;
+    storyCharacters?: StoryCharacter[];
     existingScenes?: PalitoSceneLine[];
     onComplete: (scenes: PalitoSceneLine[]) => void;
     onBack: () => void;
 }
 
-export function ScenesPage({ title, transcription, characterImageUrl, existingScenes, onComplete, onBack }: ScenesPageProps) {
+export function ScenesPage({ title, transcription, characterImageUrl, storyCharacters = [], existingScenes, onComplete, onBack }: ScenesPageProps) {
     const [scenes, setScenes] = useState<PalitoSceneLine[]>(
         existingScenes || transcription.map(t => ({ ...t, imagePrompt: '', imageUrl: undefined }))
     );
@@ -51,7 +52,24 @@ export function ScenesPage({ title, transcription, characterImageUrl, existingSc
         setGeneratingImages(prev => ({ ...prev, [i]: true }));
         setErrors(prev => ({ ...prev, [i]: '' }));
         try {
-            const url = await generateImageWithNanoBanana(scenes[i].imagePrompt);
+            const scene = scenes[i];
+            const sceneTextLower = scene.text.toLowerCase();
+
+            // Collect reference images: narrator + any story character mentioned in scene text
+            const refs: string[] = [];
+            if (characterImageUrl) refs.push(characterImageUrl);
+            for (const char of storyCharacters) {
+                if (char.imageUrl) {
+                    const nameParts = char.name.toLowerCase().split(' ');
+                    const mentioned = nameParts.some(part => part.length > 3 && sceneTextLower.includes(part));
+                    if (mentioned) refs.push(char.imageUrl);
+                }
+            }
+
+            const url = refs.length > 0
+                ? await generateImageWithReferences(scene.imagePrompt, refs)
+                : await generateImageWithNanoBanana(scene.imagePrompt);
+
             setScenes(prev => prev.map((s, idx) => idx === i ? { ...s, imageUrl: url } : s));
         } catch (e: any) {
             setErrors(prev => ({ ...prev, [i]: e.message || 'Erro ao gerar imagem' }));

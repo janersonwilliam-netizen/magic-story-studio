@@ -231,10 +231,15 @@ export function PalitoIndex() {
                     />
                 )}
 
-                {state.currentStep === 'CHARACTER' && (
+                {state.currentStep === 'CHARACTER' && state.narrationScript && (
                     <CharacterPage
-                        existingImageUrl={state.characterImageUrl}
-                        onComplete={characterImageUrl => advance('CHARACTER', { characterImageUrl })}
+                        title={state.selectedTitle || ''}
+                        script={state.narrationScript}
+                        existingNarratorUrl={state.characterImageUrl}
+                        existingStoryCharacters={state.storyCharacters}
+                        onComplete={(characterImageUrl, storyCharacters) =>
+                            advance('CHARACTER', { characterImageUrl, storyCharacters })
+                        }
                         onBack={() => goToStep('TRANSCRIPTION')}
                     />
                 )}
@@ -253,6 +258,7 @@ export function PalitoIndex() {
                         title={state.selectedTitle}
                         transcription={state.transcription}
                         characterImageUrl={state.characterImageUrl || ''}
+                        storyCharacters={state.storyCharacters}
                         existingScenes={state.scenes}
                         onComplete={scenes => advance('SCENES', { scenes })}
                         onBack={() => goToStep('THUMBNAIL')}

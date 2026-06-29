@@ -48,6 +48,12 @@ export interface PalitoSceneLine extends PalitoTranscriptionLine {
     imageUrl?: string;
 }
 
+export interface StoryCharacter {
+    name: string;
+    description: string;
+    imageUrl?: string;
+}
+
 export interface PalitoMetadata {
     viralTitle: string;
     description: string;
@@ -66,6 +72,7 @@ export interface PalitoState {
     emotion?: string;
     transcription?: PalitoTranscriptionLine[];
     characterImageUrl?: string;
+    storyCharacters?: StoryCharacter[];
     thumbnailUrl?: string;
     scenes?: PalitoSceneLine[];
     videoUrl?: string;

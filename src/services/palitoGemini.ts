@@ -176,6 +176,40 @@ export async function generatePalitoScenePrompts(
     return allPrompts.map(desc => `${STYLE_ANCHOR} ${desc}, ${STYLE_CLOSE}`);
 }
 
+// ── Personagens da história ───────────────────────────────────────────────────
+
+export async function extractStoryCharacters(
+    title: string,
+    script: string
+): Promise<Array<{ name: string; description: string }>> {
+    const prompt = `Você é um diretor de animação doodle para YouTube educativo.
+
+Título: "${title}"
+Roteiro (trecho): "${script.substring(0, 1200)}..."
+
+Identifique até 3 personagens REAIS que APARECEM ou SÃO MENCIONADOS na história — não o narrador. Podem ser pessoas históricas, figuras genéricas (ex: "Homo sapiens primitivo", "Faraó egípcio", "Cientista"), animais ou entidades representáveis visualmente.
+
+Para cada personagem, crie uma descrição visual CURTA para gerar imagem doodle 2D (em inglês, máx 40 palavras), especificando: tipo, roupa/aparência, expressão, cor de pele ou pelagem se relevante.
+
+Se o roteiro não tiver personagens visuais claros (ex: é puramente conceitual), retorne array vazio.
+
+Retorne APENAS JSON válido:
+{"characters":[{"name":"Nome em português","description":"visual description in English for image generation"}]}`;
+
+    const raw = await callVertexText(prompt, { temperature: 0.5, maxOutputTokens: 600 });
+    try {
+        const clean = raw.replace(/```json|```/g, '').trim();
+        const match = clean.match(/\{[\s\S]*\}/);
+        if (match) {
+            const parsed = JSON.parse(match[0]);
+            return (parsed.characters || []).slice(0, 3);
+        }
+    } catch {
+        console.warn('[extractStoryCharacters] JSON parse failed');
+    }
+    return [];
+}
+
 // ── Thumbnail ─────────────────────────────────────────────────────────────────
 
 export interface PalitoThumbnailData {
