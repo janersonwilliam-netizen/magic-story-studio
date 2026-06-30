@@ -51,36 +51,36 @@ export async function generatePalitoScript(title: string): Promise<string> {
 
 TÍTULO DO VÍDEO: "${title}"
 
-Escreva o roteiro COMPLETO de narração com EXATAMENTE os 5 blocos abaixo, na ordem indicada, sem pular nenhum. O texto total deve ter entre 750 e 870 palavras.
+Escreva o roteiro COMPLETO de narração com EXATAMENTE os 5 blocos abaixo, na ordem indicada, sem pular nenhum. O texto total deve ter entre 580 e 680 palavras — NÃO ultrapasse 680 palavras.
 
 ---
 BLOCO 1 — GANCHO
-Tamanho: 70 palavras exatas.
+Tamanho: 50 palavras exatas.
 Abra com uma pergunta ou situação do cotidiano impossível de ignorar. A última frase deve criar suspense para o que vem a seguir.
 
 ---
 BLOCO 2 — CONTEXTO
-Tamanho: 140 palavras exatas.
+Tamanho: 100 palavras exatas.
 Apresente o cenário completo com dados, números e história de fundo. Explique a dimensão real do tema.
 
 ---
 BLOCO 3 — EXPLICAÇÃO DETALHADA
-Tamanho: 420 palavras exatas.
+Tamanho: 320 palavras exatas.
 Este é o coração do vídeo. Desenvolva o tema em profundidade:
 - Explique os mecanismos e processos passo a passo
-- Cite pelo menos 2 pesquisadores ou estudos reais com nome e instituição, incorporados naturalmente
+- Cite pelo menos 1 pesquisador ou estudo real com nome e instituição, incorporado naturalmente
 - Revele detalhes que a maioria desconhece
 - Use exemplos concretos e comparações para facilitar a compreensão
 NÃO resuma — desenvolva cada ponto completamente.
 
 ---
 BLOCO 4 — FATO SURPREENDENTE
-Tamanho: 110 palavras exatas.
+Tamanho: 80 palavras exatas.
 Revele uma informação contra-intuitiva ou chocante que o espectador vai querer contar para alguém agora.
 
 ---
 BLOCO 5 — CONCLUSÃO
-Tamanho: 90 palavras exatas.
+Tamanho: 60 palavras exatas.
 Amarre tudo. Ecoe a primeira frase do roteiro de forma reconfigurada. Termine com algo que fique na memória.
 
 ---
@@ -90,6 +90,7 @@ REGRAS ABSOLUTAS:
 - Ritmo: Frase curta. Frase curta. Uma frase mais longa. Frase curta. Pergunta a cada 4–6 frases.
 - Todo termo técnico explicado imediatamente em linguagem simples
 - Português brasileiro
+- LIMITE RÍGIDO: o texto final NÃO pode ultrapassar 680 palavras
 
 Retorne APENAS o texto corrido dos 5 blocos unidos, sem nenhum marcador, título ou separador entre eles.`;
 
