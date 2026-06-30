@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
@@ -61,13 +61,57 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
     const [encodeStep, setEncodeStep] = useState('');
     const [videoUrl, setVideoUrl] = useState(existingVideoUrl || '');
 
-    // Scene durations from timestamps
-    const sceneDurations: number[] = scenes.map((s, i) => {
-        const start = tsToSeconds(s.timestamp);
-        const next = scenes[i + 1] ? tsToSeconds(scenes[i + 1].timestamp) : duration || start + 5;
-        return Math.max(1, next - start);
-    });
-    const totalDuration = sceneDurations.reduce((a, b) => a + b, 0) || duration;
+    // Editable scene start times (seconds) — initialized from transcription timestamps
+    const [adjustedStarts, setAdjustedStarts] = useState<number[]>(() =>
+        scenes.map(s => tsToSeconds(s.timestamp))
+    );
+
+    // Drag state for ruler handles
+    const rulerRef = useRef<HTMLDivElement>(null);
+    const dragRef = useRef<{ index: number; startX: number; startTime: number } | null>(null);
+
+    // Compute durations from adjustedStarts
+    const totalDuration = duration || (adjustedStarts[adjustedStarts.length - 1] + 5);
+    const sceneDurations: number[] = useMemo(() =>
+        adjustedStarts.map((start, i) => {
+            const end = adjustedStarts[i + 1] ?? totalDuration;
+            return Math.max(0.5, end - start);
+        }),
+        [adjustedStarts, totalDuration]
+    );
+
+    // Drag handlers for ruler resize
+    const onHandleMouseDown = useCallback((e: React.MouseEvent, index: number) => {
+        e.stopPropagation();
+        e.preventDefault();
+        dragRef.current = { index, startX: e.clientX, startTime: adjustedStarts[index + 1] ?? totalDuration };
+
+        const onMouseMove = (ev: MouseEvent) => {
+            if (!dragRef.current || !rulerRef.current) return;
+            const rulerWidth = rulerRef.current.getBoundingClientRect().width;
+            const pixelsPerSecond = rulerWidth / totalDuration;
+            const deltaTime = (ev.clientX - dragRef.current.startX) / pixelsPerSecond;
+            const newTime = dragRef.current.startTime + deltaTime;
+            const minTime = adjustedStarts[index] + 0.5;
+            const maxTime = index + 2 < adjustedStarts.length ? adjustedStarts[index + 2] - 0.5 : totalDuration;
+            setAdjustedStarts(prev => {
+                const next = [...prev];
+                if (next[index + 1] !== undefined) {
+                    next[index + 1] = Math.min(maxTime, Math.max(minTime, newTime));
+                }
+                return next;
+            });
+        };
+
+        const onMouseUp = () => {
+            dragRef.current = null;
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+    }, [adjustedStarts, totalDuration]);
 
     // Init WaveSurfer
     useEffect(() => {
@@ -89,10 +133,10 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
         ws.on('ready', () => setDuration(ws.getDuration()));
         ws.on('timeupdate', (t) => {
             setCurrentTime(t);
-            // Find active scene with pre-roll: switch slightly before the timestamp
+            // Find active scene with pre-roll using adjustedStarts
             let idx = -1;
             for (let k = 0; k < scenes.length; k++) {
-                if (tsToSeconds(scenes[k].timestamp) - SCENE_PRE_ROLL <= t) idx = k;
+                if ((adjustedStarts[k] ?? tsToSeconds(scenes[k].timestamp)) - SCENE_PRE_ROLL <= t) idx = k;
             }
             if (idx >= 0) setActiveScene(idx);
         });
@@ -113,7 +157,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
     const togglePlay = () => wavesurfer.current?.playPause();
 
     const seekToScene = (i: number) => {
-        const t = tsToSeconds(scenes[i].timestamp);
+        const t = adjustedStarts[i] ?? tsToSeconds(scenes[i].timestamp);
         wavesurfer.current?.setTime(t);
         setActiveScene(i);
     };
@@ -149,22 +193,26 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
             const audioBuf = await fetchAsArrayBuffer(audioUrl);
             await ff.writeFile('audio.mp3', new Uint8Array(audioBuf));
 
+            // Build index map: original scene index → adjusted start time
+            const allSceneIndices = scenesWithImages.map(s => scenes.indexOf(s));
+
             // Write scene images
             const concatLines: string[] = [];
             const audioDuration = duration || 0;
             for (let i = 0; i < scenesWithImages.length; i++) {
                 const scene = scenesWithImages[i];
+                const sceneIdx = allSceneIndices[i];
                 setEncodeStep(`Carregando cenas (${i + 1}/${scenesWithImages.length})...`);
                 const imgBuf = await fetchAsArrayBuffer(scene.imageUrl!);
                 const fname = `img${String(i).padStart(4, '0')}.jpg`;
                 await ff.writeFile(fname, new Uint8Array(imgBuf));
 
-                // Apply pre-roll: shift scene start earlier so image appears before the word is spoken
-                const rawStart = tsToSeconds(scene.timestamp);
+                // Use adjustedStarts for precise timing, with pre-roll offset
+                const rawStart = adjustedStarts[sceneIdx] ?? tsToSeconds(scene.timestamp);
                 const start = Math.max(0, rawStart - SCENE_PRE_ROLL);
-                const nextScene = scenesWithImages[i + 1];
-                const rawEnd = nextScene
-                    ? Math.max(0, tsToSeconds(nextScene.timestamp) - SCENE_PRE_ROLL)
+                const nextIdx = allSceneIndices[i + 1];
+                const rawEnd = nextIdx !== undefined
+                    ? Math.max(0, (adjustedStarts[nextIdx] ?? tsToSeconds(scenesWithImages[i + 1].timestamp)) - SCENE_PRE_ROLL)
                     : (audioDuration > 0 ? audioDuration : rawStart + 5);
                 const dur = Math.max(0.5, rawEnd - start);
 
@@ -292,24 +340,42 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                 <div ref={waveRef} className="w-full rounded-lg overflow-hidden" />
             </div>
 
-            {/* Scene ruler */}
+            {/* Scene ruler with drag handles */}
             {duration > 0 && (
                 <div className="bg-[#242426] border border-border rounded-xl p-4 space-y-2">
-                    <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Régua de cenas</p>
-                    <div className="flex rounded-lg overflow-hidden h-8 w-full" style={{ minWidth: 0 }}>
+                    <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Régua de cenas</p>
+                        <p className="text-[10px] text-gray-600">Arraste as bordas para ajustar a duração</p>
+                    </div>
+                    <div ref={rulerRef} className="relative flex rounded-lg overflow-visible h-8 w-full select-none" style={{ minWidth: 0 }}>
                         {sceneDurations.map((dur, i) => {
                             const pct = (dur / totalDuration) * 100;
                             const isActive = i === activeScene;
+                            const isLast = i === sceneDurations.length - 1;
                             return (
-                                <button
+                                <div
                                     key={i}
-                                    onClick={() => seekToScene(i)}
-                                    title={`[${scenes[i].timestamp}] ${scenes[i].text.substring(0, 50)}`}
+                                    className="relative h-full flex-shrink-0"
                                     style={{ width: `${pct}%`, minWidth: 2 }}
-                                    className={`h-full border-r border-[#1a1a1c] transition-colors text-[9px] overflow-hidden ${
-                                        isActive ? 'bg-primary/70' : i % 2 === 0 ? 'bg-[#1e3a5f] hover:bg-[#2a4a7f]' : 'bg-[#2d4a1e] hover:bg-[#3a5f28]'
-                                    }`}
-                                />
+                                >
+                                    <button
+                                        onClick={() => seekToScene(i)}
+                                        title={`[${secondsToTs(adjustedStarts[i])}] ${scenes[i].text.substring(0, 50)}`}
+                                        className={`w-full h-full border-r border-[#1a1a1c] transition-colors text-[9px] overflow-hidden ${
+                                            isActive ? 'bg-primary/70' : i % 2 === 0 ? 'bg-[#1e3a5f] hover:bg-[#2a4a7f]' : 'bg-[#2d4a1e] hover:bg-[#3a5f28]'
+                                        }`}
+                                    />
+                                    {/* Drag handle on right edge (not on last scene) */}
+                                    {!isLast && (
+                                        <div
+                                            onMouseDown={(e) => onHandleMouseDown(e, i)}
+                                            className="absolute top-0 right-0 w-2 h-full cursor-col-resize z-10 flex items-center justify-center group"
+                                            title="Arrastar para ajustar"
+                                        >
+                                            <div className="w-0.5 h-5 bg-white/60 rounded-full group-hover:bg-white group-hover:w-1 transition-all" />
+                                        </div>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>
@@ -350,7 +416,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <span className="text-primary font-mono text-[10px]">[{scene.timestamp}]</span>
+                                    <span className="text-primary font-mono text-[10px]">[{secondsToTs(adjustedStarts[i] ?? tsToSeconds(scene.timestamp))}]</span>
                                     <p className="text-gray-300 text-xs leading-snug line-clamp-2 mt-0.5">{scene.text}</p>
                                 </div>
                                 <span className="text-[10px] text-gray-600 shrink-0 mt-0.5">
