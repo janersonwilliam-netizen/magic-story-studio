@@ -104,7 +104,7 @@ Retorne APENAS o texto corrido dos 5 blocos unidos, sem nenhum marcador, título
 
 const STYLE_ANCHOR = `2D doodle cartoon illustration, very thick bold black outlines, clean crisp lines, high contrast, professional cartoon quality, main character with large circular white head, 4-5 thin diagonal spiky hair lines on top, two small black dot eyes, straight thin eyebrows slightly angled down at center, medium gray t-shirt (#9E9E9E) with subtle inner shading, dark gray shorts (#555555) with subtle inner shading, expressive mouth with colored tongue when open, thin arms with circular white fists, thin legs with white oval feet, small flat oval shadow under feet,`;
 
-const STYLE_CLOSE = `no photorealism, no 3D, no anime style, very thick bold outlines, vibrant colors with subtle inner shading for depth, high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
+const STYLE_CLOSE = `no photorealism, no 3D, no anime style, very thick bold outlines, vibrant flat colors, objects with bold solid fill colors, solid vivid background (NEVER plain white — use sky blue, warm yellow, soft green, coral, lavender or similar), high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
 
 const SCENE_BATCH_SIZE = 8;
 
@@ -139,13 +139,15 @@ async function generateScenePromptBatch(
 
     const prompt = `Image prompts for a doodle YouTube video titled: "${title}"
 
-For each scene below, write ONE short English prompt (max 25 words) describing: background color, character expression/pose, and 1-2 key objects.
+For each scene below, write ONE short English prompt (max 30 words) describing: background color, character expression/pose, and 1-2 key objects.
 
 SCENES:
 ${transcriptionText}
 
 Rules:
-- Alternate backgrounds: solid color OR drawn doodle scene (never same type 3x in a row)
+- ALWAYS start with a vivid background color: "bright sky blue background", "warm yellow background", "coral orange background", "soft green background", "lavender purple background", "deep teal background" — NEVER "white background"
+- Objects must have bold vivid fill colors (e.g. "bright red trophy", "golden coins", "green globe") — never colorless or outlined-only
+- Alternate background colors — never use the same color twice in a row
 - Expressions: shocked(open mouth O), confused(raised eyebrow), happy(curved mouth/arms up), thinking(chin hand), neutral
 - Keep each prompt under 30 words
 - If scene mentions dates, numbers, statistics or needs a sign/board: write the actual content on it in Portuguese (ex: sign reading "1969", board showing "70%", label "R$ 2.000")

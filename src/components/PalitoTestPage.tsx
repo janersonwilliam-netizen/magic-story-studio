@@ -5,9 +5,9 @@ import { buildPalitoThumbnailPrompt } from '../services/palitoGemini';
 
 // Espelha exatamente o STYLE_ANCHOR + STYLE_CLOSE de palitoGemini.ts
 const STYLE_ANCHOR = `2D doodle cartoon illustration, very thick bold black outlines, clean crisp lines, high contrast, professional cartoon quality, main character with large circular white head, 4-5 thin diagonal spiky hair lines on top, two small black dot eyes, straight thin eyebrows slightly angled down at center, medium gray t-shirt (#9E9E9E) with subtle inner shading, dark gray shorts (#555555) with subtle inner shading, expressive mouth with colored tongue when open, thin arms with circular white fists, thin legs with white oval feet, small flat oval shadow under feet,`;
-const STYLE_CLOSE = `no gradients, no textures, no photorealism, no 3D, no anime style, clean crisp outlines, vibrant flat colors, high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
+const STYLE_CLOSE = `no photorealism, no 3D, no anime style, very thick bold outlines, vibrant flat colors, objects with bold solid fill colors, solid vivid background (NEVER plain white — use sky blue, warm yellow, soft green, coral, lavender or similar), high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
 
-const DEFAULT_SCENE_DESC = `character shocked open mouth, light blue background, large calendar showing "1969" on the wall, rocket ship drawing on a whiteboard`;
+const DEFAULT_SCENE_DESC = `character shocked open mouth, bright sky blue background, large calendar showing "1969" on the wall, bright red rocket ship drawing on a whiteboard`;
 
 const DEFAULT_THUMBNAIL = buildPalitoThumbnailPrompt({
     textRed: 'VOCÊ NÃO',
@@ -136,12 +136,12 @@ export default function PalitoTestPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Descrições de cena para testar rapidamente</p>
                 <div className="flex flex-wrap gap-2">
                     {[
-                        `character shocked open mouth, light blue background, large calendar showing "1969" on wall`,
-                        `character thinking chin hand, yellow background, blackboard with "R$ 1.000.000" written on it`,
-                        `character happy arms up, white background, giant trophy and pile of coins`,
-                        `character confused raised eyebrow, green background, sign board reading "Por quê?"`,
-                        `character pointing right, orange background, giant human brain with label "Cérebro"`,
-                        `character neutral, white background, timeline with dates "1900 → 2000 → 2024"`,
+                        `bright sky blue background, character shocked open mouth, large calendar showing "1969" on wall`,
+                        `warm yellow background, character thinking chin hand, green blackboard with "R$ 1.000.000" written on it`,
+                        `coral orange background, character happy arms up, bright golden trophy and green money pile`,
+                        `lavender purple background, character confused raised eyebrow, white sign board reading "Por quê?"`,
+                        `soft green background, character pointing right, bright pink giant human brain with label "Cérebro"`,
+                        `deep teal background, character neutral, white timeline board with dates "1900 → 2000 → 2024"`,
                     ].map((desc, i) => (
                         <button
                             key={i}
