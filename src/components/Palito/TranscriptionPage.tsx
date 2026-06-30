@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Clock, Loader2, ArrowRight, ArrowLeft, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { Clock, Loader2, ArrowRight, ArrowLeft, Plus, Trash2, AlertCircle, Wand2 } from 'lucide-react';
 import { transcribeAudioWithGemini } from '../../services/palitoGemini';
+import { alignTranscriptionToAudio } from '../../services/audioAlign';
 import { PalitoTranscriptionLine } from '../../types/palito';
 
 interface TranscriptionPageProps {
@@ -13,20 +14,48 @@ interface TranscriptionPageProps {
 export function TranscriptionPage({ audioUrl, existingTranscription, onComplete, onBack }: TranscriptionPageProps) {
     const [lines, setLines] = useState<PalitoTranscriptionLine[]>(existingTranscription || []);
     const [loading, setLoading] = useState(false);
+    const [loadingMsg, setLoadingMsg] = useState('');
     const [error, setError] = useState('');
     const [manualMode, setManualMode] = useState(false);
+    const [aligned, setAligned] = useState(false);
 
     const handleAutoTranscribe = async () => {
         setLoading(true);
         setError('');
+        setAligned(false);
         try {
+            setLoadingMsg('Transcrevendo áudio com IA...');
             const result = await transcribeAudioWithGemini(audioUrl);
             setLines(result);
+
+            // Auto-align timestamps to real voice activity
+            setLoadingMsg('Calibrando timestamps com o áudio real...');
+            const corrected = await alignTranscriptionToAudio(audioUrl, result, setLoadingMsg);
+            setLines(corrected);
+            setAligned(true);
         } catch (e: any) {
             setError(e.message || 'Erro na transcrição automática.');
             setManualMode(true);
         } finally {
             setLoading(false);
+            setLoadingMsg('');
+        }
+    };
+
+    const handleReAlign = async () => {
+        if (lines.length === 0) return;
+        setLoading(true);
+        setLoadingMsg('Recalibrando timestamps...');
+        setError('');
+        try {
+            const corrected = await alignTranscriptionToAudio(audioUrl, lines, setLoadingMsg);
+            setLines(corrected);
+            setAligned(true);
+        } catch (e: any) {
+            setError('Falha na calibração: ' + e.message);
+        } finally {
+            setLoading(false);
+            setLoadingMsg('');
         }
     };
 
@@ -72,7 +101,7 @@ export function TranscriptionPage({ audioUrl, existingTranscription, onComplete,
                         className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
                     >
                         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                        {loading ? 'Transcrevendo áudio...' : 'Transcrição Automática'}
+                        {loading ? (loadingMsg || 'Processando...') : 'Transcrição Automática'}
                     </button>
 
                     <div className="relative flex items-center">
@@ -103,13 +132,30 @@ export function TranscriptionPage({ audioUrl, existingTranscription, onComplete,
             {lines.length > 0 && (
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-400">{lines.length} linhas detectadas</span>
-                        <button
-                            onClick={() => setLines([])}
-                            className="text-xs text-gray-500 hover:text-red-400 transition-colors"
-                        >
-                            Limpar tudo
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-400">{lines.length} linhas</span>
+                            {aligned && (
+                                <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">
+                                    ✓ Calibrado com áudio
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={handleReAlign}
+                                disabled={loading}
+                                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                            >
+                                <Wand2 className="h-3 w-3" />
+                                {loading ? (loadingMsg || 'Calibrando...') : 'Recalibrar timestamps'}
+                            </button>
+                            <button
+                                onClick={() => { setLines([]); setAligned(false); }}
+                                className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                            >
+                                Limpar tudo
+                            </button>
+                        </div>
                     </div>
 
                     <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1">
