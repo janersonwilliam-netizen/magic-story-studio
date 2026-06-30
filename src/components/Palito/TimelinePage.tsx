@@ -14,7 +14,10 @@ interface TimelinePageProps {
     onBack: () => void;
 }
 
-// "MM:SS" → seconds
+// How many seconds before a scene's timestamp to switch to it (compensates for render lag)
+const SCENE_PRE_ROLL = 0.3;
+
+// "MM:SS" or "HH:MM:SS" → seconds
 function tsToSeconds(ts: string): number {
     const parts = ts.split(':').map(Number);
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -86,10 +89,10 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
         ws.on('ready', () => setDuration(ws.getDuration()));
         ws.on('timeupdate', (t) => {
             setCurrentTime(t);
-            // Find active scene
+            // Find active scene with pre-roll: switch slightly before the timestamp
             let idx = -1;
             for (let k = 0; k < scenes.length; k++) {
-                if (tsToSeconds(scenes[k].timestamp) <= t) idx = k;
+                if (tsToSeconds(scenes[k].timestamp) - SCENE_PRE_ROLL <= t) idx = k;
             }
             if (idx >= 0) setActiveScene(idx);
         });
@@ -148,6 +151,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
 
             // Write scene images
             const concatLines: string[] = [];
+            const audioDuration = duration || 0;
             for (let i = 0; i < scenesWithImages.length; i++) {
                 const scene = scenesWithImages[i];
                 setEncodeStep(`Carregando cenas (${i + 1}/${scenesWithImages.length})...`);
@@ -155,11 +159,14 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                 const fname = `img${String(i).padStart(4, '0')}.jpg`;
                 await ff.writeFile(fname, new Uint8Array(imgBuf));
 
-                // Duration: until next scene timestamp or end of audio
-                const start = tsToSeconds(scene.timestamp);
+                // Apply pre-roll: shift scene start earlier so image appears before the word is spoken
+                const rawStart = tsToSeconds(scene.timestamp);
+                const start = Math.max(0, rawStart - SCENE_PRE_ROLL);
                 const nextScene = scenesWithImages[i + 1];
-                const end = nextScene ? tsToSeconds(nextScene.timestamp) : (duration || start + 5);
-                const dur = Math.max(0.5, end - start);
+                const rawEnd = nextScene
+                    ? Math.max(0, tsToSeconds(nextScene.timestamp) - SCENE_PRE_ROLL)
+                    : (audioDuration > 0 ? audioDuration : rawStart + 5);
+                const dur = Math.max(0.5, rawEnd - start);
 
                 concatLines.push(`file '${fname}'`);
                 concatLines.push(`duration ${dur.toFixed(3)}`);
