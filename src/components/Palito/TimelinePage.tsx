@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { toBlobURL } from '@ffmpeg/util';
 import { Play, Pause, ArrowLeft, ArrowRight, Film, Download, Loader2, CheckCircle } from 'lucide-react';
 import { PalitoSceneLine, PalitoTranscriptionLine } from '../../types/palito';
 
@@ -14,17 +14,15 @@ interface TimelinePageProps {
     onBack: () => void;
 }
 
-// How many seconds before a scene's timestamp to switch to it (compensates for render lag)
 const SCENE_PRE_ROLL = 0.5;
+const TRACK_HEIGHT = 72; // px — height of scene thumbnail track
 
-// "MM:SS" or "HH:MM:SS" → seconds
 function tsToSeconds(ts: string): number {
     const parts = ts.split(':').map(Number);
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
     return (parts[0] || 0) * 60 + (parts[1] || 0);
 }
 
-// seconds → "MM:SS"
 function secondsToTs(s: number): string {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
@@ -47,32 +45,34 @@ async function fetchAsArrayBuffer(url: string): Promise<ArrayBuffer> {
 export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl, onComplete, onBack }: TimelinePageProps) {
     const waveRef = useRef<HTMLDivElement>(null);
     const wavesurfer = useRef<WaveSurfer | null>(null);
+    const trackRef = useRef<HTMLDivElement>(null);
+
     const [playing, setPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [activeScene, setActiveScene] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
 
-    // FFmpeg state
+    // FFmpeg
     const ffmpegRef = useRef<FFmpeg | null>(null);
-    const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
     const [encoding, setEncoding] = useState(false);
     const [encodeProgress, setEncodeProgress] = useState(0);
     const [encodeStep, setEncodeStep] = useState('');
     const [videoUrl, setVideoUrl] = useState(existingVideoUrl || '');
 
-    // Editable scene start times (seconds) — initialized from transcription timestamps
+    // Editable start times
     const [adjustedStarts, setAdjustedStarts] = useState<number[]>(() =>
         scenes.map(s => tsToSeconds(s.timestamp))
     );
 
-    // Drag state for ruler handles
-    const rulerRef = useRef<HTMLDivElement>(null);
-    const dragRef = useRef<{ index: number; startX: number; startTime: number } | null>(null);
+    const dragRef = useRef<{ index: number; startX: number; origNextStart: number } | null>(null);
 
-    // Compute durations from adjustedStarts
-    const totalDuration = duration || (adjustedStarts[adjustedStarts.length - 1] + 5);
-    const sceneDurations: number[] = useMemo(() =>
+    const totalDuration = useMemo(() =>
+        duration || (adjustedStarts[adjustedStarts.length - 1] ?? 0) + 5,
+        [duration, adjustedStarts]
+    );
+
+    const sceneDurations = useMemo(() =>
         adjustedStarts.map((start, i) => {
             const end = adjustedStarts[i + 1] ?? totalDuration;
             return Math.max(0.5, end - start);
@@ -80,24 +80,66 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
         [adjustedStarts, totalDuration]
     );
 
-    // Drag handlers for ruler resize
+    // WaveSurfer init
+    useEffect(() => {
+        if (!waveRef.current || !audioUrl) return;
+        const ws = WaveSurfer.create({
+            container: waveRef.current,
+            waveColor: '#3d3d5c',
+            progressColor: '#f97316',
+            cursorColor: '#f97316',
+            cursorWidth: 2,
+            height: 64,
+            barWidth: 2,
+            barGap: 1,
+            barRadius: 2,
+            normalize: true,
+        });
+        ws.load(audioUrl);
+        ws.on('ready', () => setDuration(ws.getDuration()));
+        ws.on('timeupdate', t => {
+            setCurrentTime(t);
+            let idx = -1;
+            for (let k = 0; k < scenes.length; k++) {
+                if ((adjustedStarts[k] ?? tsToSeconds(scenes[k].timestamp)) - SCENE_PRE_ROLL <= t) idx = k;
+            }
+            if (idx >= 0) setActiveScene(idx);
+        });
+        ws.on('play', () => setPlaying(true));
+        ws.on('pause', () => setPlaying(false));
+        ws.on('finish', () => setPlaying(false));
+        wavesurfer.current = ws;
+        return () => { ws.destroy(); wavesurfer.current = null; };
+    }, [audioUrl]);
+
+    // Seek by clicking the scene track
+    const onTrackClick = useCallback((e: React.MouseEvent) => {
+        if (!trackRef.current || !wavesurfer.current || totalDuration === 0) return;
+        if (dragRef.current) return; // ignore clicks during drag
+        const rect = trackRef.current.getBoundingClientRect();
+        const pct = (e.clientX - rect.left) / rect.width;
+        wavesurfer.current.seekTo(Math.min(1, Math.max(0, pct)));
+    }, [totalDuration]);
+
+    // Drag handle
     const onHandleMouseDown = useCallback((e: React.MouseEvent, index: number) => {
         e.stopPropagation();
         e.preventDefault();
-        dragRef.current = { index, startX: e.clientX, startTime: adjustedStarts[index + 1] ?? totalDuration };
+        const origNextStart = adjustedStarts[index + 1] ?? totalDuration;
+        dragRef.current = { index, startX: e.clientX, origNextStart };
 
         const onMouseMove = (ev: MouseEvent) => {
-            if (!dragRef.current || !rulerRef.current) return;
-            const rulerWidth = rulerRef.current.getBoundingClientRect().width;
-            const pixelsPerSecond = rulerWidth / totalDuration;
-            const deltaTime = (ev.clientX - dragRef.current.startX) / pixelsPerSecond;
-            const newTime = dragRef.current.startTime + deltaTime;
-            const minTime = adjustedStarts[index] + 0.5;
-            const maxTime = index + 2 < adjustedStarts.length ? adjustedStarts[index + 2] - 0.5 : totalDuration;
+            if (!dragRef.current || !trackRef.current) return;
+            const rulerWidth = trackRef.current.getBoundingClientRect().width;
+            const pps = rulerWidth / totalDuration;
+            const delta = (ev.clientX - dragRef.current.startX) / pps;
+            const newTime = dragRef.current.origNextStart + delta;
+            const min = adjustedStarts[index] + 1.0; // minimum 1s per scene
+            const max = index + 2 < adjustedStarts.length ? adjustedStarts[index + 2] - 1.0 : totalDuration - 0.5;
             setAdjustedStarts(prev => {
                 const next = [...prev];
                 if (next[index + 1] !== undefined) {
-                    next[index + 1] = Math.min(maxTime, Math.max(minTime, newTime));
+                    next[index + 1] = Math.min(max, Math.max(min, newTime));
                 }
                 return next;
             });
@@ -108,53 +150,14 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
         };
-
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mouseup', onMouseUp);
     }, [adjustedStarts, totalDuration]);
 
-    // Init WaveSurfer
-    useEffect(() => {
-        if (!waveRef.current || !audioUrl) return;
-
-        const ws = WaveSurfer.create({
-            container: waveRef.current,
-            waveColor: '#4a4a6a',
-            progressColor: '#f97316',
-            cursorColor: '#f97316',
-            height: 72,
-            barWidth: 2,
-            barGap: 1,
-            barRadius: 2,
-            normalize: true,
-        });
-
-        ws.load(audioUrl.startsWith('data:') ? audioUrl : audioUrl);
-        ws.on('ready', () => setDuration(ws.getDuration()));
-        ws.on('timeupdate', (t) => {
-            setCurrentTime(t);
-            // Find active scene with pre-roll using adjustedStarts
-            let idx = -1;
-            for (let k = 0; k < scenes.length; k++) {
-                if ((adjustedStarts[k] ?? tsToSeconds(scenes[k].timestamp)) - SCENE_PRE_ROLL <= t) idx = k;
-            }
-            if (idx >= 0) setActiveScene(idx);
-        });
-        ws.on('play', () => setPlaying(true));
-        ws.on('pause', () => setPlaying(false));
-        ws.on('finish', () => setPlaying(false));
-
-        wavesurfer.current = ws;
-        return () => { ws.destroy(); wavesurfer.current = null; };
-    }, [audioUrl]);
-
-    // Auto-scroll list to active scene
     useEffect(() => {
         const el = listRef.current?.querySelector(`[data-idx="${activeScene}"]`) as HTMLElement;
         el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }, [activeScene]);
-
-    const togglePlay = () => wavesurfer.current?.playPause();
 
     const seekToScene = (i: number) => {
         const t = adjustedStarts[i] ?? tsToSeconds(scenes[i].timestamp);
@@ -162,7 +165,6 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
         setActiveScene(i);
     };
 
-    // Load FFmpeg
     const loadFfmpeg = async () => {
         if (ffmpegRef.current) return;
         const ff = new FFmpeg();
@@ -173,32 +175,26 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
             wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
         });
         ffmpegRef.current = ff;
-        setFfmpegLoaded(true);
     };
 
     const handleExport = useCallback(async () => {
         setEncoding(true);
         setEncodeProgress(0);
-
         try {
             setEncodeStep('Carregando FFmpeg...');
             await loadFfmpeg();
             const ff = ffmpegRef.current!;
-
             const scenesWithImages = scenes.filter(s => s.imageUrl);
             if (scenesWithImages.length === 0) throw new Error('Nenhuma cena com imagem gerada.');
 
-            // Write audio
             setEncodeStep('Carregando áudio...');
             const audioBuf = await fetchAsArrayBuffer(audioUrl);
             await ff.writeFile('audio.mp3', new Uint8Array(audioBuf));
 
-            // Build index map: original scene index → adjusted start time
             const allSceneIndices = scenesWithImages.map(s => scenes.indexOf(s));
-
-            // Write scene images
             const concatLines: string[] = [];
             const audioDuration = duration || 0;
+
             for (let i = 0; i < scenesWithImages.length; i++) {
                 const scene = scenesWithImages[i];
                 const sceneIdx = allSceneIndices[i];
@@ -207,7 +203,6 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                 const fname = `img${String(i).padStart(4, '0')}.jpg`;
                 await ff.writeFile(fname, new Uint8Array(imgBuf));
 
-                // Use adjustedStarts for precise timing, with pre-roll offset
                 const rawStart = adjustedStarts[sceneIdx] ?? tsToSeconds(scene.timestamp);
                 const start = Math.max(0, rawStart - SCENE_PRE_ROLL);
                 const nextIdx = allSceneIndices[i + 1];
@@ -219,15 +214,12 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                 concatLines.push(`file '${fname}'`);
                 concatLines.push(`duration ${dur.toFixed(3)}`);
             }
-            // ffconcat needs a final file entry without duration for the last frame
             const lastFname = `img${String(scenesWithImages.length - 1).padStart(4, '0')}.jpg`;
             concatLines.push(`file '${lastFname}'`);
-
             await ff.writeFile('concat.txt', concatLines.join('\n'));
 
-            setEncodeStep('Codificando vídeo (isso pode levar alguns minutos)...');
+            setEncodeStep('Codificando vídeo...');
             setEncodeProgress(0);
-
             await ff.exec([
                 '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
                 '-i', 'audio.mp3',
@@ -235,59 +227,50 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
                 '-c:a', 'aac', '-b:a', '128k',
                 '-pix_fmt', 'yuv420p',
-                '-shortest',
-                '-y', 'output.mp4',
+                '-shortest', '-y', 'output.mp4',
             ]);
 
             setEncodeStep('Finalizando...');
             const data = await ff.readFile('output.mp4');
             const blob = new Blob([data], { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
-            setVideoUrl(url);
-
+            setVideoUrl(URL.createObjectURL(blob));
         } catch (e: any) {
-            alert('Erro ao exportar vídeo: ' + e.message);
+            alert('Erro ao exportar: ' + e.message);
         } finally {
             setEncoding(false);
             setEncodeStep('');
         }
-    }, [scenes, audioUrl, duration]);
+    }, [scenes, audioUrl, duration, adjustedStarts]);
 
-    const handleDownload = () => {
-        if (!videoUrl) return;
-        const a = document.createElement('a');
-        a.href = videoUrl;
-        a.download = 'video_palito.mp4';
-        a.click();
-    };
+    const scenesWithImagesCount = scenes.filter(s => s.imageUrl).length;
+    const playheadPct = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
 
-    const scenesWithImages = scenes.filter(s => s.imageUrl).length;
+    // Time markers for ruler (every ~30s)
+    const markerInterval = totalDuration <= 120 ? 15 : totalDuration <= 300 ? 30 : 60;
+    const markers: number[] = [];
+    for (let t = 0; t <= totalDuration; t += markerInterval) markers.push(t);
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-4">
+            {/* Header */}
             <div className="flex items-start justify-between">
                 <div>
                     <h2 className="text-2xl font-bold text-white mb-1">Timeline</h2>
                     <p className="text-gray-400 text-sm">
-                        {scenes.length} cenas · {scenesWithImages} com imagem · duração estimada {secondsToTs(totalDuration)}
+                        {scenes.length} cenas · {scenesWithImagesCount} com imagem · {secondsToTs(totalDuration)}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex gap-2">
                     {videoUrl ? (
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 transition-colors"
-                        >
+                        <button onClick={() => { const a = document.createElement('a'); a.href = videoUrl; a.download = 'video_palito.mp4'; a.click(); }}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700">
                             <Download className="h-4 w-4" /> Baixar MP4
                         </button>
                     ) : (
-                        <button
-                            onClick={handleExport}
-                            disabled={encoding || scenesWithImages === 0}
-                            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                        >
+                        <button onClick={handleExport} disabled={encoding || scenesWithImagesCount === 0}
+                            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50">
                             {encoding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}
-                            {encoding ? 'Exportando...' : 'Exportar MP4'}
+                            {encoding ? `Exportando ${encodeProgress}%` : 'Exportar MP4'}
                         </button>
                     )}
                 </div>
@@ -301,16 +284,12 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                         <span className="text-white font-mono">{encodeProgress}%</span>
                     </div>
                     <div className="w-full bg-[#333] rounded-full h-2">
-                        <div
-                            className="bg-primary h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${encodeProgress}%` }}
-                        />
+                        <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${encodeProgress}%` }} />
                     </div>
                     <p className="text-xs text-gray-500">O encode roda no seu browser. Não feche a aba.</p>
                 </div>
             )}
 
-            {/* Video player (after export) */}
             {videoUrl && !encoding && (
                 <div className="bg-[#242426] border border-green-800 rounded-xl overflow-hidden">
                     <video src={videoUrl} controls className="w-full" style={{ maxHeight: 360 }} />
@@ -321,105 +300,153 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                 </div>
             )}
 
-            {/* Waveform + controls */}
-            <div className="bg-[#242426] border border-border rounded-xl p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={togglePlay}
-                        className="p-2 bg-primary rounded-full text-white hover:bg-primary/90 transition-colors shrink-0"
-                    >
+            {/* Player + Track */}
+            <div className="bg-[#1a1a1c] border border-border rounded-xl overflow-hidden">
+                {/* Controls bar */}
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+                    <button onClick={() => wavesurfer.current?.playPause()}
+                        className="p-2 bg-primary rounded-full text-white hover:bg-primary/90 shrink-0">
                         {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </button>
-                    <span className="text-xs font-mono text-gray-400 shrink-0">
-                        {secondsToTs(currentTime)} / {secondsToTs(duration)}
-                    </span>
-                    <span className="text-xs text-gray-500 shrink-0">
-                        Cena {activeScene + 1}/{scenes.length}: [{scenes[activeScene]?.timestamp}]
+                    <span className="text-sm font-mono text-white">{secondsToTs(currentTime)}</span>
+                    <span className="text-gray-600 text-sm">/</span>
+                    <span className="text-sm font-mono text-gray-400">{secondsToTs(duration)}</span>
+                    <span className="text-gray-500 text-xs ml-2">
+                        Cena {activeScene + 1}/{scenes.length} — {scenes[activeScene]?.text?.substring(0, 40)}
                     </span>
                 </div>
-                <div ref={waveRef} className="w-full rounded-lg overflow-hidden" />
+
+                {/* Waveform */}
+                <div className="px-4 pt-3 pb-1">
+                    <div ref={waveRef} className="w-full" />
+                </div>
+
+                {/* Scene track — aligned with waveform */}
+                {duration > 0 && (
+                    <div className="px-4 pb-3">
+                        {/* Time markers */}
+                        <div className="relative w-full mb-1" style={{ height: 14 }}>
+                            {markers.map(t => (
+                                <span key={t}
+                                    className="absolute text-[10px] text-gray-600 -translate-x-1/2"
+                                    style={{ left: `${(t / totalDuration) * 100}%` }}>
+                                    {secondsToTs(t)}
+                                </span>
+                            ))}
+                        </div>
+
+                        {/* Scene thumbnail track */}
+                        <div
+                            ref={trackRef}
+                            className="relative w-full rounded-lg overflow-hidden select-none cursor-pointer"
+                            style={{ height: TRACK_HEIGHT }}
+                            onClick={onTrackClick}
+                        >
+                            {/* Scene blocks */}
+                            {sceneDurations.map((dur, i) => {
+                                const left = (adjustedStarts[i] / totalDuration) * 100;
+                                const width = (dur / totalDuration) * 100;
+                                const isActive = i === activeScene;
+                                const isLast = i === scenes.length - 1;
+                                const scene = scenes[i];
+
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`absolute top-0 h-full border-r-2 ${isActive ? 'border-primary z-10' : 'border-[#111] z-0'}`}
+                                        style={{ left: `${left}%`, width: `${width}%` }}
+                                    >
+                                        {/* Thumbnail or color block */}
+                                        {scene.imageUrl ? (
+                                            <img
+                                                src={scene.imageUrl}
+                                                className="w-full h-full object-cover"
+                                                draggable={false}
+                                                onClick={e => { e.stopPropagation(); seekToScene(i); }}
+                                            />
+                                        ) : (
+                                            <div
+                                                className={`w-full h-full ${i % 2 === 0 ? 'bg-[#1e3a5f]' : 'bg-[#2d4a1e]'}`}
+                                                onClick={e => { e.stopPropagation(); seekToScene(i); }}
+                                            />
+                                        )}
+
+                                        {/* Active overlay */}
+                                        {isActive && (
+                                            <div className="absolute inset-0 bg-primary/20 pointer-events-none" />
+                                        )}
+
+                                        {/* Scene number badge */}
+                                        <div className="absolute top-1 left-1 bg-black/60 text-white text-[9px] px-1 rounded pointer-events-none">
+                                            {i + 1}
+                                        </div>
+
+                                        {/* Drag handle on right edge */}
+                                        {!isLast && (
+                                            <div
+                                                onMouseDown={e => onHandleMouseDown(e, i)}
+                                                onClick={e => e.stopPropagation()}
+                                                className="absolute top-0 right-0 w-3 h-full cursor-col-resize z-20 flex items-center justify-center group"
+                                                title={`Arrastar para ajustar — ${secondsToTs(adjustedStarts[i + 1])}`}
+                                            >
+                                                <div className="flex flex-col gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                    <div className="w-0.5 h-1 bg-white rounded-full" />
+                                                    <div className="w-0.5 h-1 bg-white rounded-full" />
+                                                    <div className="w-0.5 h-1 bg-white rounded-full" />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            {/* Playhead */}
+                            <div
+                                className="absolute top-0 bottom-0 w-0.5 bg-primary z-30 pointer-events-none"
+                                style={{ left: `${playheadPct}%` }}
+                            >
+                                <div className="absolute -top-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rounded-full" />
+                            </div>
+                        </div>
+
+                        <p className="text-[10px] text-gray-600 mt-1.5 text-right">
+                            Clique para buscar · Arraste as bordas brancas para ajustar duração
+                        </p>
+                    </div>
+                )}
             </div>
 
-            {/* Scene ruler with drag handles */}
-            {duration > 0 && (
-                <div className="bg-[#242426] border border-border rounded-xl p-4 space-y-2">
-                    <div className="flex items-center justify-between mb-1">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Régua de cenas</p>
-                        <p className="text-[10px] text-gray-600">Arraste as bordas para ajustar a duração</p>
-                    </div>
-                    <div ref={rulerRef} className="relative flex rounded-lg overflow-visible h-8 w-full select-none" style={{ minWidth: 0 }}>
-                        {sceneDurations.map((dur, i) => {
-                            const pct = (dur / totalDuration) * 100;
-                            const isActive = i === activeScene;
-                            const isLast = i === sceneDurations.length - 1;
-                            return (
-                                <div
-                                    key={i}
-                                    className="relative h-full flex-shrink-0"
-                                    style={{ width: `${pct}%`, minWidth: 2 }}
-                                >
-                                    <button
-                                        onClick={() => seekToScene(i)}
-                                        title={`[${secondsToTs(adjustedStarts[i])}] ${scenes[i].text.substring(0, 50)}`}
-                                        className={`w-full h-full border-r border-[#1a1a1c] transition-colors text-[9px] overflow-hidden ${
-                                            isActive ? 'bg-primary/70' : i % 2 === 0 ? 'bg-[#1e3a5f] hover:bg-[#2a4a7f]' : 'bg-[#2d4a1e] hover:bg-[#3a5f28]'
-                                        }`}
-                                    />
-                                    {/* Drag handle on right edge (not on last scene) */}
-                                    {!isLast && (
-                                        <div
-                                            onMouseDown={(e) => onHandleMouseDown(e, i)}
-                                            className="absolute top-0 right-0 w-2 h-full cursor-col-resize z-10 flex items-center justify-center group"
-                                            title="Arrastar para ajustar"
-                                        >
-                                            <div className="w-0.5 h-5 bg-white/60 rounded-full group-hover:bg-white group-hover:w-1 transition-all" />
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div className="flex justify-between text-[10px] text-gray-600">
-                        <span>00:00</span>
-                        <span>{secondsToTs(totalDuration / 4)}</span>
-                        <span>{secondsToTs(totalDuration / 2)}</span>
-                        <span>{secondsToTs((totalDuration * 3) / 4)}</span>
-                        <span>{secondsToTs(totalDuration)}</span>
-                    </div>
-                </div>
-            )}
-
-            {/* Split: scene list + active preview */}
-            <div className="grid grid-cols-2 gap-4" style={{ minHeight: 400 }}>
-                {/* Left: scene list */}
-                <div className="border border-border rounded-xl overflow-hidden flex flex-col">
-                    <div className="px-3 py-2 bg-[#1a1a1c] border-b border-border">
+            {/* Scene list + preview */}
+            <div className="grid grid-cols-2 gap-4">
+                {/* Scene list */}
+                <div className="border border-border rounded-xl overflow-hidden flex flex-col" style={{ maxHeight: 420 }}>
+                    <div className="px-3 py-2 bg-[#1a1a1c] border-b border-border shrink-0">
                         <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Cenas</p>
                     </div>
-                    <div ref={listRef} className="overflow-y-auto flex-1" style={{ maxHeight: 420 }}>
+                    <div ref={listRef} className="overflow-y-auto flex-1">
                         {scenes.map((scene, i) => (
                             <button
                                 key={i}
                                 data-idx={i}
                                 onClick={() => seekToScene(i)}
-                                className={`w-full text-left px-3 py-2.5 border-b border-border/50 transition-colors flex items-start gap-2 ${
-                                    activeScene === i
-                                        ? 'bg-primary/10 border-l-2 border-l-primary'
-                                        : 'hover:bg-[#242426]'
+                                className={`w-full text-left px-3 py-2 border-b border-border/40 flex items-center gap-2 transition-colors ${
+                                    activeScene === i ? 'bg-primary/10 border-l-2 border-l-primary' : 'hover:bg-[#242426]'
                                 }`}
                             >
                                 {scene.imageUrl ? (
-                                    <img src={scene.imageUrl} className="w-10 h-7 object-cover rounded shrink-0 mt-0.5" alt="" />
+                                    <img src={scene.imageUrl} className="w-12 h-8 object-cover rounded shrink-0" alt="" />
                                 ) : (
-                                    <div className="w-10 h-7 bg-[#333] rounded shrink-0 mt-0.5 flex items-center justify-center">
+                                    <div className="w-12 h-8 bg-[#333] rounded shrink-0 flex items-center justify-center">
                                         <span className="text-[8px] text-gray-600">sem img</span>
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <span className="text-primary font-mono text-[10px]">[{secondsToTs(adjustedStarts[i] ?? tsToSeconds(scene.timestamp))}]</span>
-                                    <p className="text-gray-300 text-xs leading-snug line-clamp-2 mt-0.5">{scene.text}</p>
+                                    <span className="text-primary font-mono text-[10px]">
+                                        {secondsToTs(adjustedStarts[i] ?? tsToSeconds(scene.timestamp))}
+                                    </span>
+                                    <p className="text-gray-300 text-xs leading-snug line-clamp-1 mt-0.5">{scene.text}</p>
                                 </div>
-                                <span className="text-[10px] text-gray-600 shrink-0 mt-0.5">
+                                <span className="text-[10px] text-gray-600 shrink-0 ml-1">
                                     {sceneDurations[i]?.toFixed(1)}s
                                 </span>
                             </button>
@@ -427,22 +454,26 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                     </div>
                 </div>
 
-                {/* Right: active scene preview */}
+                {/* Active scene preview */}
                 <div className="flex flex-col gap-3">
-                    <div className="bg-[#242426] border border-border rounded-xl px-4 py-3">
-                        <p className="text-xs text-gray-500 mb-1">Cena ativa — [{scenes[activeScene]?.timestamp}]</p>
-                        <p className="text-white text-sm leading-relaxed">{scenes[activeScene]?.text}</p>
-                        <p className="text-gray-600 text-xs mt-1">
-                            Duração: {sceneDurations[activeScene]?.toFixed(1)}s
-                        </p>
+                    <div className="bg-[#1a1a1c] border border-border rounded-xl px-4 py-3">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-xs text-gray-500">
+                                    Cena {activeScene + 1} · {secondsToTs(adjustedStarts[activeScene] ?? 0)}
+                                </p>
+                                <p className="text-white text-sm mt-1 leading-snug line-clamp-3">
+                                    {scenes[activeScene]?.text}
+                                </p>
+                            </div>
+                            <span className="text-xs font-mono text-primary ml-3 shrink-0">
+                                {sceneDurations[activeScene]?.toFixed(1)}s
+                            </span>
+                        </div>
                     </div>
-                    <div className="bg-[#242426] border border-border rounded-xl overflow-hidden aspect-video flex items-center justify-center">
+                    <div className="border border-border rounded-xl overflow-hidden aspect-video bg-[#111] flex items-center justify-center">
                         {scenes[activeScene]?.imageUrl ? (
-                            <img
-                                src={scenes[activeScene].imageUrl}
-                                className="w-full h-full object-cover"
-                                alt={`Cena ${activeScene + 1}`}
-                            />
+                            <img src={scenes[activeScene].imageUrl} className="w-full h-full object-cover" alt="" />
                         ) : (
                             <p className="text-gray-600 text-sm">Sem imagem</p>
                         )}
@@ -451,13 +482,10 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
             </div>
 
             <div className="flex justify-between pt-2">
-                <button onClick={onBack} className="flex items-center gap-2 px-4 py-2.5 bg-[#242426] border border-border text-gray-300 rounded-lg text-sm hover:text-white transition-colors">
+                <button onClick={onBack} className="flex items-center gap-2 px-4 py-2.5 bg-[#242426] border border-border text-gray-300 rounded-lg text-sm hover:text-white">
                     <ArrowLeft className="h-4 w-4" /> Voltar
                 </button>
-                <button
-                    onClick={() => onComplete(videoUrl)}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90 transition-colors"
-                >
+                <button onClick={() => onComplete(videoUrl)} className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/90">
                     Avançar <ArrowRight className="h-4 w-4" />
                 </button>
             </div>
