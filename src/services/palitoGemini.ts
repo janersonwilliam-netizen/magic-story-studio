@@ -286,11 +286,13 @@ Responda SOMENTE com JSON válido, sem markdown:
     };
 }
 
+const THUMBNAIL_STYLE_CLOSE = `no photorealism, no 3D, no anime style, very thick bold outlines, vibrant flat colors on objects and character, PURE WHITE BACKGROUND (no yellow, no colored background, no border, no frame), high contrast composition, 16:9 ratio, educational YouTube doodle channel style.`;
+
 export function buildPalitoThumbnailPrompt(data: PalitoThumbnailData): string {
     const fullText = `${data.textRed} ${data.textBlack}`.trim();
     return [
-        'white background, hand-drawn 2D doodle illustration style,',
-        'thick black marker outlines, flat colors, no gradients, no shadows, no textures,',
+        'PURE WHITE background, no colored background, no border, no frame, hand-drawn 2D doodle illustration style,',
+        'thick black marker outlines, flat colors on objects only, no gradients, no shadows, no textures,',
         `large bold uppercase title text at the VERY TOP of the image reading "${fullText}",`,
         `the words "${data.textRed}" are rendered in bold RED color, the words "${data.textBlack}" are rendered in bold BLACK color,`,
         'title text is very large occupying the top 25% of the image height,',
@@ -300,8 +302,8 @@ export function buildPalitoThumbnailPrompt(data: PalitoThumbnailData): string {
         `${data.object1} drawn in cartoon doodle style placed in the CENTER-RIGHT of the frame,`,
         `${data.object2} near the central object,`,
         'thick bold red curved arrow pointing from the character toward the central object,',
-        'only ONE character total, high contrast composition, clean white space,',
-        STYLE_CLOSE,
+        'only ONE character total, high contrast composition, white space background,',
+        THUMBNAIL_STYLE_CLOSE,
     ].join(' ');
 }
 
