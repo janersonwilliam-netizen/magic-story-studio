@@ -4,7 +4,7 @@ import { generateImageWithNanoBanana } from '../../services/google_image';
 import { extractStoryCharacters } from '../../services/palitoGemini';
 import { StoryCharacter } from '../../types/palito';
 
-const STORY_CHAR_STYLE = `Hand-drawn 2D doodle animation style, flat colors, thick black outlines, slightly imperfect marker lines. Character in neutral standing pose, centered, pure white background. No shading, no gradient, no textures, no photorealism, no 3D, no anime style, 1:1 ratio, pure white background, educational YouTube doodle channel style.`;
+const STORY_CHAR_STYLE = `2D doodle cartoon illustration, very thick bold black outlines, clean crisp lines, flat solid colors, high contrast, professional cartoon quality. Character in neutral standing pose, centered, pure white background. No gradients, no textures, no photorealism, no 3D, no anime style, 1:1 ratio, educational YouTube doodle channel style.`;
 
 interface CharacterPageProps {
     title: string;

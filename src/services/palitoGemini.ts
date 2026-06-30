@@ -102,9 +102,9 @@ Retorne APENAS o texto corrido dos 5 blocos unidos, sem nenhum marcador, título
 
 // ── Prompts de cena ──────────────────────────────────────────────────────────
 
-const STYLE_ANCHOR = `Hand-drawn 2D doodle animation, flat colors, thick black outlines, slightly imperfect marker lines, main character with large circular white head, 4-5 thin diagonal spiky hair lines, two black dot eyes, straight thin eyebrows slightly angled down at center, medium gray t-shirt (#9E9E9E) and dark gray shorts (#555555), thin arms with circular white fists, thin legs with white oval feet, flattened oval shadow under feet,`;
+const STYLE_ANCHOR = `2D doodle cartoon illustration, very thick bold black outlines, clean crisp lines, flat solid colors, high contrast, professional cartoon quality, main character with large circular white head, 4-5 thin diagonal spiky hair lines on top, two small black dot eyes, straight thin eyebrows slightly angled down at center, medium gray t-shirt (#9E9E9E) and dark gray shorts (#555555), thin arms with circular white fists, thin legs with white oval feet, flattened oval shadow under feet,`;
 
-const STYLE_CLOSE = `no gradients, no cast shadows, no shading, no textures, no photorealism, no 3D, no anime style, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
+const STYLE_CLOSE = `no gradients, no textures, no photorealism, no 3D, no anime style, clean crisp outlines, vibrant flat colors, high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
 
 const SCENE_BATCH_SIZE = 8;
 
