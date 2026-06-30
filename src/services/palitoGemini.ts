@@ -102,9 +102,9 @@ Retorne APENAS o texto corrido dos 5 blocos unidos, sem nenhum marcador, título
 
 // ── Prompts de cena ──────────────────────────────────────────────────────────
 
-const STYLE_ANCHOR = `2D doodle cartoon illustration, very thick bold black outlines, clean crisp lines, flat solid colors, high contrast, professional cartoon quality, main character with large circular white head (solid flat white fill, no shading inside), 4-5 thin diagonal spiky hair lines on top, two small black dot eyes, straight thin eyebrows slightly angled down at center, medium gray t-shirt (solid flat #9E9E9E fill, absolutely no shading or gradient inside the shirt), dark gray shorts (solid flat #555555 fill, no shading), mouth shown as simple black open oval with NO colored tongue and NO pink interior, thin arms with solid white circular fists, thin legs with solid white oval feet, small flat oval shadow under feet,`;
+const STYLE_ANCHOR = `2D doodle cartoon illustration, very thick bold black outlines, clean crisp lines, high contrast, professional cartoon quality, main character with large circular white head, 4-5 thin diagonal spiky hair lines on top, two small black dot eyes, straight thin eyebrows slightly angled down at center, medium gray t-shirt (#9E9E9E) with subtle inner shading, dark gray shorts (#555555) with subtle inner shading, expressive mouth with colored tongue when open, thin arms with circular white fists, thin legs with white oval feet, small flat oval shadow under feet,`;
 
-const STYLE_CLOSE = `no gradients, no textures, no photorealism, no 3D, no anime style, clean crisp outlines, vibrant flat colors, high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
+const STYLE_CLOSE = `no photorealism, no 3D, no anime style, very thick bold outlines, vibrant colors with subtle inner shading for depth, high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
 
 const SCENE_BATCH_SIZE = 8;
 
