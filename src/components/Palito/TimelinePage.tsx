@@ -14,7 +14,7 @@ interface TimelinePageProps {
     onBack: () => void;
 }
 
-const SCENE_PRE_ROLL = 0.5;
+const SCENE_PRE_ROLL = 0.0; // offset is now handled by globalOffset slider
 const TRACK_HEIGHT = 72; // px — height of scene thumbnail track
 
 function tsToSeconds(ts: string): number {
@@ -60,9 +60,18 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
     const [encodeStep, setEncodeStep] = useState('');
     const [videoUrl, setVideoUrl] = useState(existingVideoUrl || '');
 
-    // Editable start times
+    // Global offset: shift ALL scene timestamps earlier (negative = images appear sooner)
+    const [globalOffset, setGlobalOffset] = useState(-1.0);
+
+    // Editable start times (base, without offset)
     const [adjustedStarts, setAdjustedStarts] = useState<number[]>(() =>
         scenes.map(s => tsToSeconds(s.timestamp))
+    );
+
+    // Effective starts = adjustedStarts + globalOffset (clamped to >= 0)
+    const effectiveStarts = useMemo(() =>
+        adjustedStarts.map(s => Math.max(0, s + globalOffset)),
+        [adjustedStarts, globalOffset]
     );
 
     const dragRef = useRef<{ index: number; startX: number; origNextStart: number } | null>(null);
@@ -73,11 +82,11 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
     );
 
     const sceneDurations = useMemo(() =>
-        adjustedStarts.map((start, i) => {
-            const end = adjustedStarts[i + 1] ?? totalDuration;
+        effectiveStarts.map((start, i) => {
+            const end = effectiveStarts[i + 1] ?? totalDuration;
             return Math.max(0.5, end - start);
         }),
-        [adjustedStarts, totalDuration]
+        [effectiveStarts, totalDuration]
     );
 
     // WaveSurfer init
@@ -101,7 +110,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
             setCurrentTime(t);
             let idx = -1;
             for (let k = 0; k < scenes.length; k++) {
-                if ((adjustedStarts[k] ?? tsToSeconds(scenes[k].timestamp)) - SCENE_PRE_ROLL <= t) idx = k;
+                if ((effectiveStarts[k] ?? 0) <= t) idx = k;
             }
             if (idx >= 0) setActiveScene(idx);
         });
@@ -134,8 +143,8 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
             const pps = rulerWidth / totalDuration;
             const delta = (ev.clientX - dragRef.current.startX) / pps;
             const newTime = dragRef.current.origNextStart + delta;
-            const min = adjustedStarts[index] + 1.0; // minimum 1s per scene
-            const max = index + 2 < adjustedStarts.length ? adjustedStarts[index + 2] - 1.0 : totalDuration - 0.5;
+            const min = adjustedStarts[index] + 1.0;
+            const max = index + 2 < adjustedStarts.length ? adjustedStarts[index + 2] - 1.0 : totalDuration - globalOffset - 0.5;
             setAdjustedStarts(prev => {
                 const next = [...prev];
                 if (next[index + 1] !== undefined) {
@@ -160,8 +169,8 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
     }, [activeScene]);
 
     const seekToScene = (i: number) => {
-        const t = adjustedStarts[i] ?? tsToSeconds(scenes[i].timestamp);
-        wavesurfer.current?.setTime(t);
+        const t = effectiveStarts[i] ?? 0;
+        wavesurfer.current?.setTime(Math.max(0, t));
         setActiveScene(i);
     };
 
@@ -203,12 +212,11 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                 const fname = `img${String(i).padStart(4, '0')}.jpg`;
                 await ff.writeFile(fname, new Uint8Array(imgBuf));
 
-                const rawStart = adjustedStarts[sceneIdx] ?? tsToSeconds(scene.timestamp);
-                const start = Math.max(0, rawStart - SCENE_PRE_ROLL);
+                const start = Math.max(0, effectiveStarts[sceneIdx] ?? 0);
                 const nextIdx = allSceneIndices[i + 1];
                 const rawEnd = nextIdx !== undefined
-                    ? Math.max(0, (adjustedStarts[nextIdx] ?? tsToSeconds(scenesWithImages[i + 1].timestamp)) - SCENE_PRE_ROLL)
-                    : (audioDuration > 0 ? audioDuration : rawStart + 5);
+                    ? Math.max(0, effectiveStarts[nextIdx] ?? 0)
+                    : (audioDuration > 0 ? audioDuration : start + 5);
                 const dur = Math.max(0.5, rawEnd - start);
 
                 concatLines.push(`file '${fname}'`);
@@ -303,7 +311,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
             {/* Player + Track */}
             <div className="bg-[#1a1a1c] border border-border rounded-xl overflow-hidden">
                 {/* Controls bar */}
-                <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-border flex-wrap">
                     <button onClick={() => wavesurfer.current?.playPause()}
                         className="p-2 bg-primary rounded-full text-white hover:bg-primary/90 shrink-0">
                         {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -311,9 +319,21 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                     <span className="text-sm font-mono text-white">{secondsToTs(currentTime)}</span>
                     <span className="text-gray-600 text-sm">/</span>
                     <span className="text-sm font-mono text-gray-400">{secondsToTs(duration)}</span>
-                    <span className="text-gray-500 text-xs ml-2">
-                        Cena {activeScene + 1}/{scenes.length} — {scenes[activeScene]?.text?.substring(0, 40)}
-                    </span>
+
+                    {/* Global offset control */}
+                    <div className="flex items-center gap-2 ml-auto bg-[#111] rounded-lg px-3 py-1.5 border border-border">
+                        <span className="text-[11px] text-gray-400 shrink-0">Adiantar imagens:</span>
+                        <button onClick={() => setGlobalOffset(v => Math.max(-3, +(v - 0.5).toFixed(1)))}
+                            className="w-5 h-5 rounded bg-[#333] text-white text-xs hover:bg-[#555] flex items-center justify-center">−</button>
+                        <span className="text-xs font-mono text-primary w-10 text-center">
+                            {globalOffset > 0 ? '+' : ''}{globalOffset.toFixed(1)}s
+                        </span>
+                        <button onClick={() => setGlobalOffset(v => Math.min(3, +(v + 0.5).toFixed(1)))}
+                            className="w-5 h-5 rounded bg-[#333] text-white text-xs hover:bg-[#555] flex items-center justify-center">+</button>
+                        <span className="text-[10px] text-gray-600 ml-1">
+                            {globalOffset < 0 ? `${Math.abs(globalOffset)}s antes` : globalOffset > 0 ? `${globalOffset}s depois` : 'sem offset'}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Waveform */}
@@ -344,7 +364,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                         >
                             {/* Scene blocks */}
                             {sceneDurations.map((dur, i) => {
-                                const left = (adjustedStarts[i] / totalDuration) * 100;
+                                const left = (effectiveStarts[i] / totalDuration) * 100;
                                 const width = (dur / totalDuration) * 100;
                                 const isActive = i === activeScene;
                                 const isLast = i === scenes.length - 1;
@@ -442,7 +462,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                                 )}
                                 <div className="flex-1 min-w-0">
                                     <span className="text-primary font-mono text-[10px]">
-                                        {secondsToTs(adjustedStarts[i] ?? tsToSeconds(scene.timestamp))}
+                                        {secondsToTs(effectiveStarts[i] ?? 0)}
                                     </span>
                                     <p className="text-gray-300 text-xs leading-snug line-clamp-1 mt-0.5">{scene.text}</p>
                                 </div>
@@ -460,7 +480,7 @@ export function TimelinePage({ audioUrl, scenes, transcription, existingVideoUrl
                         <div className="flex justify-between items-start">
                             <div>
                                 <p className="text-xs text-gray-500">
-                                    Cena {activeScene + 1} · {secondsToTs(adjustedStarts[activeScene] ?? 0)}
+                                    Cena {activeScene + 1} · {secondsToTs(effectiveStarts[activeScene] ?? 0)}
                                 </p>
                                 <p className="text-white text-sm mt-1 leading-snug line-clamp-3">
                                     {scenes[activeScene]?.text}

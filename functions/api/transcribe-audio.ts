@@ -90,7 +90,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: `Erro ao buscar áudio: ${e.message}` }, { status: 400 });
     }
 
-    const prompt = `Você é um transcritor profissional de áudio. Transcreva o áudio a seguir em PORTUGUÊS BRASILEIRO com timestamps de alta precisão.
+    const prompt = `Você é um transcritor profissional de áudio com foco em sincronização de vídeo. Transcreva o áudio a seguir em PORTUGUÊS BRASILEIRO.
 
 FORMATO DE SAÍDA OBRIGATÓRIO — retorne APENAS um array JSON válido, sem markdown, sem explicações:
 [
@@ -98,17 +98,18 @@ FORMATO DE SAÍDA OBRIGATÓRIO — retorne APENAS um array JSON válido, sem mar
   {"timestamp": "00:05", "text": "Próxima frase aqui."}
 ]
 
-REGRAS CRÍTICAS SOBRE TIMESTAMPS:
-- O timestamp deve marcar o INSTANTE EXATO em que a PRIMEIRA PALAVRA da frase começa a ser pronunciada no áudio
-- NÃO marque o meio da frase, NÃO marque o fim — sempre o INÍCIO absoluto
-- Se houver silêncio antes da frase, o timestamp é quando o silêncio termina e a voz começa
-- Seja preciso ao segundo mais próximo
+REGRA MAIS IMPORTANTE — TIMESTAMPS:
+- O timestamp é o momento em que o SILÊNCIO ANTERIOR TERMINA e a voz começa
+- Na dúvida entre dois valores, escolha SEMPRE o valor MENOR (mais cedo)
+- É melhor a imagem aparecer 0.5s cedo do que tarde
+- NÃO use o timestamp do fim da frase
+- Seja preciso ao segundo
 
-REGRAS DE SEGMENTAÇÃO:
-- Máximo 8 a 10 palavras por linha
-- Quebre em cada pausa natural, vírgula longa ou ponto
-- Transcreva EXATAMENTE o que foi dito, sem corrigir ou resumir
-- Formato do timestamp: MM:SS (ex: "00:00", "01:23", "10:45")
+SEGMENTAÇÃO:
+- 6 a 10 palavras por linha
+- Quebre a cada pausa, vírgula ou ponto final
+- Transcreva exatamente o que foi dito
+- Formato: MM:SS
 - Não inclua nada além do array JSON`;
 
     const token = await getVertexToken(env as any);
