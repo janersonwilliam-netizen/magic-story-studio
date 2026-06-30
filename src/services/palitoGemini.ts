@@ -103,9 +103,9 @@ Retorne APENAS o texto corrido dos 5 blocos unidos, sem nenhum marcador, título
 
 // ── Prompts de cena ──────────────────────────────────────────────────────────
 
-const STYLE_ANCHOR = `2D flat doodle cartoon illustration, very thick bold black outlines, clean crisp lines, NO 3D rendering, NO shading on body, high contrast, stick figure proportions, main character: large perfectly circular white head (no shading on head), 4-5 SHORT thin diagonal spiky hair lines on top of head (hair lines are short, close to the head, NOT wild or long), two small black dot eyes, straight thin eyebrows, simple expressive mouth with colored tongue when open, medium gray t-shirt (#9E9E9E) flat color, dark gray shorts (#555555) flat color, very thin stick arms, small circular white fists, thin stick legs, small white oval feet, flat oval shadow under feet,`;
+const STYLE_ANCHOR = `2D doodle cartoon illustration, very thick bold black outlines, clean crisp lines, NO 3D rendering, high contrast, stick figure proportions, main character: large perfectly circular white head (no shading on head), 4-5 SHORT thin diagonal spiky hair lines on top of head (short, close to head, NOT wild or long), two small black dot eyes, straight thin eyebrows, simple expressive mouth with colored tongue when open, medium gray t-shirt (#9E9E9E) with subtle inner shading, dark gray shorts (#555555) with subtle inner shading, very thin stick arms, small circular white fists, thin stick legs, small white oval feet, flat oval shadow under feet,`;
 
-const STYLE_CLOSE = `no photorealism, no 3D, no anime style, very thick bold outlines, vibrant flat colors, objects with bold solid fill colors, solid vivid background (NEVER plain white — use sky blue, warm yellow, soft green, coral, lavender or similar), high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
+const STYLE_CLOSE = `no photorealism, no 3D rendering, no anime style, very thick bold outlines, vibrant colors with subtle inner shading for depth on objects, high contrast composition, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
 
 const SCENE_BATCH_SIZE = 8;
 
@@ -140,19 +140,27 @@ async function generateScenePromptBatch(
 
     const prompt = `Image prompts for a doodle YouTube video titled: "${title}"
 
-For each scene below, write ONE short English prompt (max 30 words) describing: background color, character expression/pose, and 1-2 key objects.
+For each scene below, write ONE short English prompt (max 35 words).
 
 SCENES:
 ${transcriptionText}
 
-Rules:
-- ALWAYS start with a vivid background color: "bright sky blue background", "warm yellow background", "coral orange background", "soft green background", "lavender purple background", "deep teal background" — NEVER "white background"
-- Objects must have bold vivid fill colors (e.g. "bright red trophy", "golden coins", "green globe") — never colorless or outlined-only
-- Alternate background colors — never use the same color twice in a row
+Background rules (choose the most fitting):
+- WHITE BACKGROUND (default): use when the scene is abstract, conceptual, or focused on a single object/action. Character + objects on plain white.
+- DRAWN ENVIRONMENT: use when the scene describes a real place or situation. Describe the setting as a drawn doodle scene: "drawn doodle classroom with chalkboard and desks", "doodle night sky with stars and moon", "cartoon city skyline with buildings", "doodle ancient cave with fire". NOT a flat color — a drawn environment.
+- Use white background for at least 50% of scenes.
+
+Character rules:
+- MOST scenes include the stick figure character with an expression
+- Some scenes (10-20%) can be CHARACTER-FREE: just show the environment or objects when the scene is describing a place, historical event, or wide concept (e.g. "doodle aerial view of ancient city", "cartoon timeline showing 1900 to 2000", "giant globe with continents")
+
+Object rules:
+- Objects must have bold vivid fill colors with inner shading for depth
 - Expressions: shocked(open mouth O), confused(raised eyebrow), happy(curved mouth/arms up), thinking(chin hand), neutral
-- Keep each prompt under 30 words
-- If scene mentions dates, numbers, statistics or needs a sign/board: write the actual content on it in Portuguese (ex: sign reading "1969", board showing "70%", label "R$ 2.000")
-- Any text written inside the image must be in Brazilian Portuguese
+
+Other rules:
+- Keep each prompt under 35 words
+- If scene mentions dates, numbers, statistics or needs a sign/board: write the actual content in Portuguese (ex: sign reading "1969", board showing "80%", label "R$ 2.000")
 
 Return ONLY valid JSON, no extra text:
 {"prompts":["prompt1","prompt2",...]}`;
