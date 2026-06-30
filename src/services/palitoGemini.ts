@@ -197,18 +197,12 @@ Se o roteiro não tiver personagens visuais claros (ex: é puramente conceitual)
 Retorne APENAS JSON válido:
 {"characters":[{"name":"Nome em português","description":"visual description in English for image generation"}]}`;
 
-    const raw = await callVertexText(prompt, { temperature: 0.5, maxOutputTokens: 600 });
-    try {
-        const clean = raw.replace(/```json|```/g, '').trim();
-        const match = clean.match(/\{[\s\S]*\}/);
-        if (match) {
-            const parsed = JSON.parse(match[0]);
-            return (parsed.characters || []).slice(0, 3);
-        }
-    } catch {
-        console.warn('[extractStoryCharacters] JSON parse failed');
-    }
-    return [];
+    const raw = await callVertexText(prompt, { temperature: 0.5, maxOutputTokens: 800 });
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const match = clean.match(/\{[\s\S]*\}/);
+    if (!match) return [];
+    const parsed = JSON.parse(match[0]);
+    return ((parsed.characters || []) as Array<{ name: string; description: string }>).slice(0, 3);
 }
 
 // ── Thumbnail ─────────────────────────────────────────────────────────────────

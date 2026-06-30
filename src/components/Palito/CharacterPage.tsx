@@ -26,14 +26,21 @@ export function CharacterPage({
     const [generatingIdx, setGeneratingIdx] = useState<number | null>(null);
     const [error, setError] = useState('');
 
+    const [noCharsFound, setNoCharsFound] = useState(false);
+
     const handleExtractCharacters = async () => {
         setExtracting(true);
         setError('');
+        setNoCharsFound(false);
         try {
             const chars = await extractStoryCharacters(title, script);
-            setStoryChars(chars.map(c => ({ ...c, imageUrl: undefined })));
+            if (chars.length === 0) {
+                setNoCharsFound(true);
+            } else {
+                setStoryChars(chars.map(c => ({ ...c, imageUrl: undefined })));
+            }
         } catch (e: any) {
-            setError(e.message || 'Erro ao identificar personagens.');
+            setError(e.message || 'Erro ao identificar personagens. Tente novamente.');
         } finally {
             setExtracting(false);
         }
@@ -91,10 +98,18 @@ export function CharacterPage({
                     </button>
                 </div>
 
-                {storyChars.length === 0 && !extracting && (
+                {storyChars.length === 0 && !extracting && !noCharsFound && (
                     <div className="bg-[#1a1a1c] border border-dashed border-border rounded-xl p-6 text-center">
                         <Users className="h-8 w-8 text-gray-600 mx-auto mb-2" />
                         <p className="text-gray-500 text-sm">Clique em "Identificar Personagens" para analisar o roteiro e extrair os personagens da história.</p>
+                    </div>
+                )}
+
+                {noCharsFound && !extracting && (
+                    <div className="bg-[#1a1a1c] border border-dashed border-amber-800/40 rounded-xl p-6 text-center">
+                        <Users className="h-8 w-8 text-amber-600 mx-auto mb-2" />
+                        <p className="text-amber-400 text-sm font-medium mb-1">Nenhum personagem visual identificado</p>
+                        <p className="text-gray-500 text-xs">O roteiro desta história é mais conceitual e não tem personagens visuais específicos. O narrador palito será o único personagem nas cenas.</p>
                     </div>
                 )}
 
