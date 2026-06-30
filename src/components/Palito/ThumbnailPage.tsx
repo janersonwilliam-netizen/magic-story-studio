@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import { Image, Loader2, RefreshCw, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
-import { generateImageWithNanoBanana } from '../../services/google_image';
+import { generateImageWithNanoBanana, generateImageWithReferences } from '../../services/google_image';
 import { generatePalitoThumbnailData, buildPalitoThumbnailPrompt, PalitoThumbnailData } from '../../services/palitoGemini';
+import { StoryCharacter } from '../../types/palito';
 
 interface ThumbnailPageProps {
     title: string;
+    script?: string;
+    storyCharacters?: StoryCharacter[];
     existingThumbnailUrl?: string;
     onComplete: (thumbnailUrl: string) => void;
     onBack: () => void;
 }
 
-export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack }: ThumbnailPageProps) {
+export function ThumbnailPage({ title, script, storyCharacters, existingThumbnailUrl, onComplete, onBack }: ThumbnailPageProps) {
     const [thumbnailUrl, setThumbnailUrl] = useState(existingThumbnailUrl || '');
     const [thumbnailData, setThumbnailData] = useState<PalitoThumbnailData | null>(null);
     const [textRed, setTextRed] = useState('');
@@ -26,7 +29,7 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
         setLoadingData(true);
         setError('');
         try {
-            const data = await generatePalitoThumbnailData(title);
+            const data = await generatePalitoThumbnailData(title, script);
             setThumbnailData(data);
             setTextRed(data.textRed);
             setTextBlack(data.textBlack);
@@ -53,7 +56,17 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
                 characterAction,
             };
             const prompt = buildPalitoThumbnailPrompt(data);
-            const url = await generateImageWithNanoBanana(prompt);
+
+            // Use story character images as visual references if available
+            const refs = (storyCharacters || [])
+                .filter(c => c.imageUrl)
+                .map(c => c.imageUrl!)
+                .slice(0, 2); // max 2 refs
+
+            const url = refs.length > 0
+                ? await generateImageWithReferences(prompt, refs)
+                : await generateImageWithNanoBanana(prompt);
+
             setThumbnailUrl(url);
         } catch (e: any) {
             setError(e.message || 'Erro ao gerar capa. Tente novamente.');
@@ -178,6 +191,21 @@ export function ThumbnailPage({ title, existingThumbnailUrl, onComplete, onBack 
                             placeholder="ex: pointing at the fire with one arm extended, mouth open in shock"
                         />
                     </div>
+
+                    {/* Story character references */}
+                    {storyCharacters && storyCharacters.some(c => c.imageUrl) && (
+                        <div className="flex items-center gap-2 p-3 bg-[#1a1a1c] border border-border rounded-lg">
+                            <span className="text-xs text-gray-400 shrink-0">Referências de personagens:</span>
+                            <div className="flex gap-2">
+                                {storyCharacters.filter(c => c.imageUrl).map((c, i) => (
+                                    <div key={i} className="flex items-center gap-1.5">
+                                        <img src={c.imageUrl} className="w-8 h-8 rounded object-cover border border-border" alt={c.name} />
+                                        <span className="text-xs text-gray-500">{c.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="flex gap-2">
                         <button

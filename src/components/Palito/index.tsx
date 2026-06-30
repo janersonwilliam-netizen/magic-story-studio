@@ -244,6 +244,8 @@ export function PalitoIndex() {
                 {state.currentStep === 'THUMBNAIL' && state.selectedTitle && (
                     <ThumbnailPage
                         title={state.selectedTitle}
+                        script={state.script}
+                        storyCharacters={state.storyCharacters}
                         existingThumbnailUrl={state.thumbnailUrl}
                         onComplete={thumbnailUrl => advance('THUMBNAIL', { thumbnailUrl })}
                         onBack={() => goToStep('CHARACTER')}

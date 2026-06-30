@@ -234,10 +234,14 @@ function hookOverlapsTitle(hook: string, title: string): boolean {
     return matches.length >= 2;
 }
 
-export async function generatePalitoThumbnailData(title: string): Promise<PalitoThumbnailData> {
+export async function generatePalitoThumbnailData(title: string, script?: string): Promise<PalitoThumbnailData> {
+    const scriptContext = script
+        ? `\nTrecho do roteiro: "${script.substring(0, 400)}..."`
+        : '';
+
     const buildPrompt = (strict: boolean) => `Você é um especialista em capas virais de YouTube educativo (estilo Tudo Explicadim, Zenn, Me Poupe).
 
-Título do vídeo: "${title}"
+Título do vídeo: "${title}"${scriptContext}
 
 ⛔ PROIBIDO: A frase da capa NÃO PODE conter nenhuma das palavras-chave do título acima.
 ⛔ PROIBIDO: Não use prefixos como "SURPRESA:", "INCRÍVEL:", "REVELADO:" seguidos do título.
@@ -255,7 +259,7 @@ A frase deve ter 4 a 6 palavras e ser dividida em 2 partes:
 - textRed: 2 a 3 palavras — o trecho mais chocante ou emocional
 - textBlack: o restante que completa o sentido
 
-Também escolha 2 objetos visuais concretos relacionados ao CONTEÚDO (não ao título).
+Escolha 2 objetos visuais CONCRETOS e MARCANTES que aparecem ou representam o conteúdo do vídeo. Use elementos específicos do roteiro (personagens históricos, objetos da época, cenários, símbolos) — nunca objetos genéricos como troféu, moeda ou ponto de exclamação. Descreva em inglês de forma detalhada para geração de imagem.
 
 Responda SOMENTE com JSON válido, sem markdown:
 {"textRed":"...","textBlack":"...","object1":"...","object2":"...","characterAction":"..."}`;
