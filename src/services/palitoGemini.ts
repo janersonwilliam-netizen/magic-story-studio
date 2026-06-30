@@ -102,9 +102,9 @@ Retorne APENAS o texto corrido dos 5 blocos unidos, sem nenhum marcador, título
 
 // ── Prompts de cena ──────────────────────────────────────────────────────────
 
-const STYLE_ANCHOR = `Animação doodle 2D desenhada à mão, cores chapadas, contornos pretos grossos, linhas levemente imperfeitas de marcador, personagem principal com cabeça circular grande preenchida de branco, cabelo de 4 a 5 riscos diagonais finos espetados, olhos em dois pontos pretos, sobrancelhas retas finas levemente inclinadas para baixo no centro, camiseta cinza médio (#9E9E9E) e shorts cinza escuro (#555555), braços finos com punhos circulares brancos, pernas finas com pés ovais brancos, sombra oval achatada embaixo dos pés,`;
+const STYLE_ANCHOR = `Hand-drawn 2D doodle animation, flat colors, thick black outlines, slightly imperfect marker lines, main character with large circular white head, 4-5 thin diagonal spiky hair lines, two black dot eyes, straight thin eyebrows slightly angled down at center, medium gray t-shirt (#9E9E9E) and dark gray shorts (#555555), thin arms with circular white fists, thin legs with white oval feet, flattened oval shadow under feet,`;
 
-const STYLE_CLOSE = `sem gradientes, sem sombras projetadas, sem sombreamento, sem texturas, sem fotorrealismo, sem 3D, sem estilo anime, proporção 16:9, estilo doodle de canal educativo no YouTube.`;
+const STYLE_CLOSE = `no gradients, no cast shadows, no shading, no textures, no photorealism, no 3D, no anime style, 16:9 ratio, educational YouTube doodle channel style. Any text written INSIDE the image (signs, boards, labels, numbers, dates, statistics) MUST be in Brazilian Portuguese.`;
 
 const SCENE_BATCH_SIZE = 8;
 
@@ -146,9 +146,10 @@ ${transcriptionText}
 
 Rules:
 - Alternate backgrounds: solid color OR drawn doodle scene (never same type 3x in a row)
-- Expressions: shocked(open mouth O), confused(raised eyebrow), happy(curved mouth/arms up), thinking(HMMM bubble), neutral
-- Keep each prompt under 25 words
-- Any text labels inside the scene must be in Portuguese
+- Expressions: shocked(open mouth O), confused(raised eyebrow), happy(curved mouth/arms up), thinking(chin hand), neutral
+- Keep each prompt under 30 words
+- If scene mentions dates, numbers, statistics or needs a sign/board: write the actual content on it in Portuguese (ex: sign reading "1969", board showing "70%", label "R$ 2.000")
+- Any text written inside the image must be in Brazilian Portuguese
 
 Return ONLY valid JSON, no extra text:
 {"prompts":["prompt1","prompt2",...]}`;

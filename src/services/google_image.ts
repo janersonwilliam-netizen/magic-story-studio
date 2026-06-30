@@ -32,9 +32,9 @@ function stripQuoteCues(text: string): string {
     return text.replace(/["'“”‘’«»„‟]/g, '');
 }
 
-// Detecta se o prompt PEDE texto (capa/thumbnail com título). Nesse caso NÃO bloqueamos texto.
+// Detecta se o prompt PEDE texto. Nesse caso NÃO bloqueamos texto.
 function promptWantsText(text: string): boolean {
-    return /TITULO:|TITLE DESIGN|title text|movie logo|spell(ed)? exactly/i.test(text);
+    return /TITULO:|TITLE DESIGN|title text|movie logo|spell(ed)? exactly|sign reading|board (showing|with|reading)|write.*on (the )?(sign|board|label|placard)|label (reading|showing|with)|text.*in.*Portuguese|Brazilian Portuguese|Any text written/i.test(text);
 }
 
 /**
