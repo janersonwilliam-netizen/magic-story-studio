@@ -218,16 +218,24 @@ export interface PalitoThumbnailData {
     characterAction: string;
 }
 
+function hookOverlapsTitle(hook: string, title: string): boolean {
+    const stopWords = new Set(['a', 'o', 'e', 'de', 'do', 'da', 'em', 'no', 'na', 'um', 'uma', 'os', 'as', 'dos', 'das', 'nos', 'nas', 'que', 'se', 'por', 'para', 'com', 'ao', 'à']);
+    const titleWords = title.toLowerCase().replace(/[?!.,]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+    const hookWords = hook.toLowerCase().replace(/[?!.,]/g, '').split(/\s+/);
+    const matches = titleWords.filter(w => hookWords.includes(w));
+    return matches.length >= 2;
+}
+
 export async function generatePalitoThumbnailData(title: string): Promise<PalitoThumbnailData> {
-    const directionPrompt = `Você é um especialista em capas virais de YouTube educativo (estilo Tudo Explicadim, Zenn, Me Poupe).
+    const buildPrompt = (strict: boolean) => `Você é um especialista em capas virais de YouTube educativo (estilo Tudo Explicadim, Zenn, Me Poupe).
 
 Título do vídeo: "${title}"
 
-REGRA MAIS IMPORTANTE: A frase da capa NUNCA pode conter as mesmas palavras do título. É uma frase COMPLETAMENTE DIFERENTE.
+⛔ PROIBIDO: A frase da capa NÃO PODE conter nenhuma das palavras-chave do título acima.
+⛔ PROIBIDO: Não use prefixos como "SURPRESA:", "INCRÍVEL:", "REVELADO:" seguidos do título.
+✅ OBRIGATÓRIO: A frase deve expressar a EMOÇÃO ou REVELAÇÃO que o vídeo entrega — não descreva o tema.
 
-Crie uma FRASE GANCHO ORIGINAL de 4 a 6 palavras que cause choque ou curiosidade sobre o tema. Pense na REVELAÇÃO ou REAÇÃO que o vídeo entrega — não no título.
-
-EXEMPLOS DE TRANSFORMAÇÃO (observe como a frase é totalmente diferente do título):
+${strict ? '⚠️ ATENÇÃO: Tentativa anterior falhou porque a frase continha palavras do título. Crie algo COMPLETAMENTE diferente.\n\n' : ''}EXEMPLOS — observe que a frase não repete NENHUMA palavra do título:
 - Título: "Como era a noite dos humanos antigos?" → Frase: "ELES TINHAM MEDO DO ESCURO"
 - Título: "Quanto ganha um astronauta da NASA?" → Frase: "ESSE SALÁRIO VAI TE CHOCAR"
 - Título: "Por que choramos ao cortar cebola?" → Frase: "SEU OLHO ESTÁ SE DEFENDENDO"
@@ -235,28 +243,33 @@ EXEMPLOS DE TRANSFORMAÇÃO (observe como a frase é totalmente diferente do tí
 - Título: "O que acontece com o corpo sem dormir?" → Frase: "SEU CÉREBRO COMEÇA A ALUCINAR"
 - Título: "Quem inventou o avião realmente?" → Frase: "A HISTÓRIA FOI ALTERADA"
 
-A frase deve ser dividida em 2 partes:
+A frase deve ter 4 a 6 palavras e ser dividida em 2 partes:
 - textRed: 2 a 3 palavras — o trecho mais chocante ou emocional
 - textBlack: o restante que completa o sentido
 
-Também escolha 2 objetos visuais concretos do TEMA (não do título).
+Também escolha 2 objetos visuais concretos relacionados ao CONTEÚDO (não ao título).
 
 Responda SOMENTE com JSON válido, sem markdown:
 {"textRed":"...","textBlack":"...","object1":"...","object2":"...","characterAction":"..."}`;
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-        const raw = await callVertexText(directionPrompt, { temperature: 0.5 + attempt * 0.1, maxOutputTokens: 600 });
+    for (let attempt = 0; attempt < 4; attempt++) {
+        const raw = await callVertexText(buildPrompt(attempt > 0), { temperature: 0.6 + attempt * 0.1, maxOutputTokens: 600 });
         try {
             const clean = raw.replace(/```json|```/g, '').trim();
-            // Extract JSON object even if there's trailing text
             const match = clean.match(/\{[\s\S]*\}/);
-            if (match) return JSON.parse(match[0]) as PalitoThumbnailData;
+            if (!match) continue;
+            const data = JSON.parse(match[0]) as PalitoThumbnailData;
+            const hook = `${data.textRed} ${data.textBlack}`;
+            if (hookOverlapsTitle(hook, title)) {
+                console.warn(`[Thumbnail] Hook "${hook}" overlaps title on attempt ${attempt + 1}, retrying...`);
+                continue;
+            }
+            return data;
         } catch {
             console.warn(`[Thumbnail] JSON parse failed on attempt ${attempt + 1}, retrying...`);
         }
     }
-    // Last resort fallback — at least derive objects from title keywords
-    const words = title.toUpperCase().split(' ');
+    // Last resort fallback with generic emotional phrases (never title words)
     const titleLower = title.toLowerCase();
     const object1 = titleLower.includes('noite') ? 'ancient campfire with flames at night under stars'
         : titleLower.includes('dinheiro') || titleLower.includes('milh') ? 'stack of dollar bills'
@@ -265,8 +278,8 @@ Responda SOMENTE com JSON válido, sem markdown:
         : titleLower.includes('espaço') || titleLower.includes('planet') ? 'planet earth from space'
         : 'large question mark symbol';
     return {
-        textRed: words.slice(0, 2).join(' '),
-        textBlack: words.slice(2).join(' ') || '!',
+        textRed: 'ISSO VAI',
+        textBlack: 'TE SURPREENDER',
         object1,
         object2: 'large bold exclamation mark',
         characterAction: 'pointing at object with one arm extended and jaw dropped open, eyes wide',
