@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Menu, X } from 'lucide-react';
 
-type PageType = 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'narration-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito';
+type PageType = 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'narration-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito' | 'palito-test';
 
 // Map routes to page IDs
 const routeToPage: Record<string, PageType> = {
@@ -20,6 +20,7 @@ const routeToPage: Record<string, PageType> = {
     '/video-gen': 'video-gen',
     '/music-clip': 'music-clip',
     '/palito': 'palito',
+    '/palito-test': 'palito-test',
 };
 
 // Map page IDs to routes
@@ -37,6 +38,7 @@ const pageToRoute: Record<PageType, string> = {
     'video-gen': '/video-gen',
     'music-clip': '/music-clip',
     'palito': '/palito',
+    'palito-test': '/palito-test',
 };
 
 export function MainLayout() {

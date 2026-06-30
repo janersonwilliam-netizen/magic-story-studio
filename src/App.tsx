@@ -18,6 +18,7 @@ import { PlaygroundPage } from './components/PlaygroundPage';
 import { VideoGenPage } from './components/VideoGenPage';
 import { MusicClipPage } from './components/MusicClipPage';
 import { PalitoIndex } from './components/Palito';
+import PalitoTestPage from './components/PalitoTestPage';
 
 export default function App() {
     return (
@@ -49,6 +50,7 @@ export default function App() {
                         <Route path="/video-gen" element={<VideoGenPage />} />
                         <Route path="/music-clip" element={<MusicClipPage />} />
                         <Route path="/palito" element={<PalitoIndex />} />
+                        <Route path="/palito-test" element={<PalitoTestPage />} />
                     </Route>
 
                     {/* Default redirect */}
