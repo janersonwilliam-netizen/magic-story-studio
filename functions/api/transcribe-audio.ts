@@ -90,7 +90,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: `Erro ao buscar áudio: ${e.message}` }, { status: 400 });
     }
 
-    const prompt = `Você é um transcritor profissional. Transcreva o áudio a seguir em PORTUGUÊS BRASILEIRO com timestamps precisos a cada frase ou mudança de pausa.
+    const prompt = `Você é um transcritor profissional de áudio. Transcreva o áudio a seguir em PORTUGUÊS BRASILEIRO com timestamps de alta precisão.
 
 FORMATO DE SAÍDA OBRIGATÓRIO — retorne APENAS um array JSON válido, sem markdown, sem explicações:
 [
@@ -98,11 +98,17 @@ FORMATO DE SAÍDA OBRIGATÓRIO — retorne APENAS um array JSON válido, sem mar
   {"timestamp": "00:05", "text": "Próxima frase aqui."}
 ]
 
-REGRAS:
-- Um timestamp por frase ou pensamento completo (não por palavra)
-- Formato do timestamp: MM:SS (ex: "00:00", "01:23", "10:45")
+REGRAS CRÍTICAS SOBRE TIMESTAMPS:
+- O timestamp deve marcar o INSTANTE EXATO em que a PRIMEIRA PALAVRA da frase começa a ser pronunciada no áudio
+- NÃO marque o meio da frase, NÃO marque o fim — sempre o INÍCIO absoluto
+- Se houver silêncio antes da frase, o timestamp é quando o silêncio termina e a voz começa
+- Seja preciso ao segundo mais próximo
+
+REGRAS DE SEGMENTAÇÃO:
+- Máximo 8 a 10 palavras por linha
+- Quebre em cada pausa natural, vírgula longa ou ponto
 - Transcreva EXATAMENTE o que foi dito, sem corrigir ou resumir
-- Separe em linhas curtas de no máximo 10 a 15 palavras
+- Formato do timestamp: MM:SS (ex: "00:00", "01:23", "10:45")
 - Não inclua nada além do array JSON`;
 
     const token = await getVertexToken(env as any);

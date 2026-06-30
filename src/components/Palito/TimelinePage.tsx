@@ -15,7 +15,7 @@ interface TimelinePageProps {
 }
 
 // How many seconds before a scene's timestamp to switch to it (compensates for render lag)
-const SCENE_PRE_ROLL = 0.3;
+const SCENE_PRE_ROLL = 0.5;
 
 // "MM:SS" or "HH:MM:SS" → seconds
 function tsToSeconds(ts: string): number {
