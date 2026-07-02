@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { PenLine, ArrowLeft, Loader2 } from 'lucide-react';
-import { PalitoState, PalitoStep, PALITO_STEPS, PALITO_STEP_LABELS, PalitoTranscriptionLine, PalitoSceneLine, PalitoMetadata } from '../../types/palito';
+import { PalitoState, PalitoStep, PalitoFormat, PALITO_STEP_LABELS, stepsForFormat, PalitoTranscriptionLine, PalitoSceneLine, PalitoMetadata } from '../../types/palito';
 import { palitoStorage } from '../../lib/palitoStorage';
 import { useAuth } from '../../contexts/AuthContext';
 import { LibraryPage } from './LibraryPage';
+import { FormatSelectModal } from './FormatSelectModal';
 import { IdeasPage } from './IdeasPage';
 import { ScriptPage } from './ScriptPage';
 import { NarrationPage } from './NarrationPage';
@@ -16,19 +17,20 @@ import { MetadataPage } from './MetadataPage';
 
 type View = 'library' | 'editor';
 
-const STEP_ORDER: PalitoStep[] = PALITO_STEPS;
-
-function stepIndex(step: PalitoStep) {
-    return STEP_ORDER.indexOf(step);
-}
-
 export function PalitoIndex() {
     const { user } = useAuth();
     const [view, setView] = useState<View>('library');
-    const [state, setState] = useState<PalitoState>({ currentStep: 'IDEAS' });
+    const [state, setState] = useState<PalitoState>({ currentStep: 'IDEAS', format: 'VIDEO' });
     const [completedSteps, setCompletedSteps] = useState<Set<PalitoStep>>(new Set());
     const [saving, setSaving] = useState(false);
     const [loadingProject, setLoadingProject] = useState(false);
+    const [showFormatModal, setShowFormatModal] = useState(false);
+
+    const STEP_ORDER: PalitoStep[] = stepsForFormat(state.format);
+
+    function stepIndex(step: PalitoStep) {
+        return STEP_ORDER.indexOf(step);
+    }
 
     // Auto-save whenever state changes (debounced)
     useEffect(() => {
@@ -42,12 +44,17 @@ export function PalitoIndex() {
         return () => clearTimeout(timer);
     }, [state, view]);
 
-    const handleNewProject = async () => {
+    const handleNewProject = () => {
+        setShowFormatModal(true);
+    };
+
+    const handleSelectFormat = async (format: PalitoFormat) => {
         if (!user?.id) return;
+        setShowFormatModal(false);
         setLoadingProject(true);
         try {
-            const id = await palitoStorage.createProject(user.id);
-            setState({ projectId: id, currentStep: 'IDEAS' });
+            const id = await palitoStorage.createProject(user.id, format);
+            setState({ projectId: id, currentStep: 'IDEAS', format });
             setCompletedSteps(new Set());
             setView('editor');
         } catch (e) {
@@ -103,10 +110,18 @@ export function PalitoIndex() {
 
     if (view === 'library') {
         return (
-            <LibraryPage
-                onNewProject={handleNewProject}
-                onOpenProject={handleOpenProject}
-            />
+            <>
+                <LibraryPage
+                    onNewProject={handleNewProject}
+                    onOpenProject={handleOpenProject}
+                />
+                {showFormatModal && (
+                    <FormatSelectModal
+                        onSelect={handleSelectFormat}
+                        onClose={() => setShowFormatModal(false)}
+                    />
+                )}
+            </>
         );
     }
 
@@ -203,6 +218,7 @@ export function PalitoIndex() {
                 {state.currentStep === 'SCRIPT' && state.selectedTitle && (
                     <ScriptPage
                         title={state.selectedTitle}
+                        format={state.format}
                         existingScript={state.narrationScript}
                         onComplete={narrationScript => advance('SCRIPT', { narrationScript })}
                         onBack={() => goToStep('IDEAS')}
@@ -244,7 +260,7 @@ export function PalitoIndex() {
                 {state.currentStep === 'THUMBNAIL' && state.selectedTitle && (
                     <ThumbnailPage
                         title={state.selectedTitle}
-                        script={state.script}
+                        script={state.narrationScript}
                         storyCharacters={state.storyCharacters}
                         existingThumbnailUrl={state.thumbnailUrl}
                         onComplete={thumbnailUrl => advance('THUMBNAIL', { thumbnailUrl })}
@@ -259,8 +275,9 @@ export function PalitoIndex() {
                         characterImageUrl={state.characterImageUrl || ''}
                         storyCharacters={state.storyCharacters}
                         existingScenes={state.scenes}
+                        format={state.format}
                         onComplete={scenes => advance('SCENES', { scenes })}
-                        onBack={() => goToStep('THUMBNAIL')}
+                        onBack={() => goToStep(state.format === 'SHORTS' ? 'CHARACTER' : 'THUMBNAIL')}
                     />
                 )}
 
@@ -269,6 +286,7 @@ export function PalitoIndex() {
                         audioUrl={state.audioUrl}
                         scenes={state.scenes}
                         transcription={state.transcription}
+                        format={state.format}
                         existingVideoUrl={state.videoUrl}
                         onComplete={videoUrl => advance('TIMELINE', { videoUrl })}
                         onBack={() => goToStep('SCENES')}
@@ -280,6 +298,7 @@ export function PalitoIndex() {
                         title={state.selectedTitle}
                         script={state.narrationScript}
                         scenes={state.scenes}
+                        format={state.format}
                         audioUrl={state.audioUrl}
                         thumbnailUrl={state.thumbnailUrl}
                         videoUrl={state.videoUrl}

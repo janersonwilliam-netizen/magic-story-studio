@@ -9,7 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CharacterDNA, Scene, StoryWithScenes } from '../../types/studio';
 import { generateImagePrompt } from '../../services/gemini';
 import { generateImageWithNanoBanana, generateImageWithReferences } from '../../services/google_image';
-import { Loader2, Check, Image as ImageIcon, AlertCircle, Download, RefreshCw } from 'lucide-react';
+import { IMAGE_STYLE_2D, IMAGE_STYLE_3D } from '../../lib/imageStyle';
+import { Loader2, Check, Image as ImageIcon, AlertCircle, Download, RefreshCw, ArrowRight } from 'lucide-react';
 import JSZip from 'jszip';
 
 interface ImagesPageProps {
@@ -217,9 +218,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onPartialUpdate, onBac
 
                 // Style string based on visual style
                 const is2D = storyWithScenes.visualStyle === 'Estilo 2D Cartoon';
-                const styleStr = is2D
-                    ? 'Premium 2D cartoon illustration, modern Disney 2D style, vibrant colors, crisp clean outlines, animated children storybook style, NO 3D, NO CGI'
-                    : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, vibrant colors';
+                const styleStr = is2D ? IMAGE_STYLE_2D : IMAGE_STYLE_3D;
 
                 // If the scene has a rich imagePrompt (from backend rawScenes), use it directly.
                 // It already contains the correct setting, action, and all visual details.
@@ -378,9 +377,7 @@ export function ImagesPage({ storyWithScenes, onComplete, onPartialUpdate, onBac
                 .join('. ');
 
             const is2D = storyWithScenes.visualStyle === 'Estilo 2D Cartoon';
-            const styleStr = is2D
-                ? 'Premium 2D cartoon illustration, modern Disney 2D style, vibrant colors, crisp clean outlines, animated children storybook style, NO 3D, NO CGI'
-                : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, vibrant colors';
+            const styleStr = is2D ? IMAGE_STYLE_2D : IMAGE_STYLE_3D;
 
             const hasRichImagePrompt = !!(scene.imagePrompt
                 && scene.imagePrompt !== 'ENDING_CARD_PLACEHOLDER'
@@ -800,8 +797,8 @@ export function ImagesPage({ storyWithScenes, onComplete, onPartialUpdate, onBac
                             </>
                         ) : (
                             <>
-                                <Check className="w-5 h-5" />
-                                EDITAR NA LINHA DO TEMPO
+                                Próximo
+                                <ArrowRight className="w-5 h-5" />
                             </>
                         )}
                     </button>

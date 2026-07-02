@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Sparkles, Loader2, Save, Check, Film, Download, 
 import { supabase } from '../lib/supabase';
 import { generateStoryWithGemini, generateScenesWithGemini, generateImagePrompt, extractCharactersFromStory, generateAllCharacterSheets, Scene } from '../services/gemini';
 import { generateImageWithNanoBanana } from '../services/google_image';
-import { generateAudioNarration, generateLongAudioNarration } from '../services/tts';
+import { generateAudioNarration } from '../services/tts';
 import { SceneList } from './SceneList';
 import { CharacterModal } from './CharacterModal';
 import { StepWizard, STORY_CREATION_STEPS } from './StepWizard';
@@ -514,10 +514,16 @@ export function StoryViewer({ storyId, onBack }: StoryViewerProps) {
         try {
             setGeneratingFullAudio(true);
             const narrationText = story.narration_text || story.story_text || '';
-            const audioUrl = await generateLongAudioNarration({
+            // Mesmo padrão do Palito: uma ÚNICA geração Gemini para a história toda
+            // (uma voz só, timbre consistente) + nivelador de volume. Só fragmenta
+            // em blocos grandes (4000 chars) se o provedor recusar por tamanho.
+            // Padrão por tema: bíblicas usam tom solene/narrativo; clássicas usam
+            // tom lúdico de contação de histórias.
+            const isBiblica = story.theme === 'biblica';
+            const audioUrl = await generateAudioNarration({
                 text: narrationText,
-                maxChunkChars: 900,
-                disableLeveling: false
+                voiceName: isBiblica ? 'Charon' : 'Kore',
+                emotion: isBiblica ? 'authoritative' : 'storyteller'
             });
             await supabase.from('stories').update({ full_audio_url: audioUrl }).eq('id', storyId);
             setStory({ ...story, full_audio_url: audioUrl });

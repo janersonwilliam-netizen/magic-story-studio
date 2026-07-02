@@ -5,11 +5,12 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { StudioStep, StudioState, StoryConfig, StoryWithNarration, StoryWithScenes } from '../../types/studio';
+import { StudioStep, StudioState, StoryConfig, StoryWithNarration, StoryWithScenes, StoryMetadata } from '../../types/studio';
 import { ConfigPage } from './ConfigPage';
 import { NarrationPage } from './NarrationPage';
 import { ScenesPage } from './ScenesPage';
 import { ImagesPage } from './ImagesPage';
+import { MetadataPage } from './MetadataPage';
 import { TimelinePage } from './TimelinePage';
 
 // Import Studio pages (will be created in Sprint 5+)
@@ -125,12 +126,18 @@ export function StudioIndex() {
         const loadedData = story.data;
         let finalStep = loadedData?.currentStep || 'CONFIG';
 
+        // EDITOR is temporarily disabled for the children's-story flow — normalize any
+        // legacy saved state pointing at it back to TIMELINE, which is the final step for now.
+        if (loadedData && (loadedData.currentStep as string) === 'EDITOR') {
+            loadedData.currentStep = 'TIMELINE';
+        }
+
         if (!loadedData || !loadedData.currentStep) {
             setStudioState({ currentStep: 'CONFIG' });
         } else {
             // If a specific step was requested via URL, navigate to it (if valid)
             if (stepFromUrl) {
-                const validSteps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
+                const validSteps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'METADATA', 'TIMELINE', 'EDITOR'];
                 const requestedStepIndex = validSteps.indexOf(stepFromUrl);
                 const currentStepIndex = validSteps.indexOf(loadedData.currentStep);
 
@@ -168,7 +175,7 @@ export function StudioIndex() {
                 updatedAt: Date.now(),
                 previewImage,
                 data: newState,
-                isComplete: newState.currentStep === 'EDITOR'
+                isComplete: newState.currentStep === 'TIMELINE'
             };
 
             await storyStorage.saveStory(project);
@@ -188,7 +195,7 @@ export function StudioIndex() {
     };
 
     const nextStep = () => {
-        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
+        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'METADATA', 'TIMELINE', 'EDITOR'];
         const currentIndex = steps.indexOf(studioState.currentStep);
         if (currentIndex < steps.length - 1) {
             goToStep(steps[currentIndex + 1]);
@@ -196,7 +203,7 @@ export function StudioIndex() {
     };
 
     const previousStep = () => {
-        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
+        const steps: StudioStep[] = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'METADATA', 'TIMELINE', 'EDITOR'];
         const currentIndex = steps.indexOf(studioState.currentStep);
         if (currentIndex > 0) {
             goToStep(steps[currentIndex - 1]);
@@ -252,6 +259,17 @@ export function StudioIndex() {
         const newState: StudioState = {
             ...studioState,
             storyWithScenes,
+            currentStep: 'METADATA'
+        };
+        setStudioState(newState);
+        saveProgress(newState);
+    };
+
+    // Handler for METADATA page completion
+    const handleMetadataComplete = (metadata: StoryMetadata) => {
+        const newState: StudioState = {
+            ...studioState,
+            metadata,
             currentStep: 'TIMELINE'
         };
         setStudioState(newState);
@@ -271,11 +289,13 @@ export function StudioIndex() {
     };
 
     // Handler for TIMELINE page completion
+    // NOTE: EDITOR is temporarily disabled for the children's-story flow, so TIMELINE stays
+    // the final step for now instead of advancing to the (unfinished) EDITOR placeholder.
     const handleTimelineComplete = (storyWithTimeline: any) => {
         const newState: StudioState = {
             ...studioState,
             storyWithScenes: storyWithTimeline,
-            currentStep: 'EDITOR'
+            currentStep: 'TIMELINE'
         };
         setStudioState(newState);
         saveProgress(newState);
@@ -300,6 +320,7 @@ export function StudioIndex() {
         { key: 'SCENES', label: 'CENAS' },
         { key: 'THUMBNAIL', label: 'CAPA' },
         { key: 'IMAGES', label: 'IMAGENS' },
+        { key: 'METADATA', label: 'METADADOS' },
         { key: 'TIMELINE', label: 'EDITOR' }, // Timeline is the Editor
     ];
 
@@ -308,10 +329,11 @@ export function StudioIndex() {
     const currentStepIndex = getStepIndex(studioState.currentStep);
 
     // Determine which steps are accessible (completed or current)
-    const highestReachedStep = studioState.storyWithScenes ?
-        (studioState.storyWithScenes.scenes?.[0]?.imageUrl ? 'IMAGES' :
-            (studioState.storyWithScenes.thumbnailUrl ? 'THUMBNAIL' : 'SCENES')) :
-        (studioState.story ? 'NARRATION' : 'CONFIG');
+    const highestReachedStep = studioState.metadata ? 'METADATA' :
+        studioState.storyWithScenes ?
+            (studioState.storyWithScenes.scenes?.[0]?.imageUrl ? 'IMAGES' :
+                (studioState.storyWithScenes.thumbnailUrl ? 'THUMBNAIL' : 'SCENES')) :
+            (studioState.story ? 'NARRATION' : 'CONFIG');
     const highestReachedIndex = getStepIndex(highestReachedStep as StudioStep);
 
     // Check if we should show the step navigation (not in TIMELINE/EDITOR mode)
@@ -406,29 +428,24 @@ export function StudioIndex() {
                     />
                 )}
 
-                {studioState.currentStep === 'TIMELINE' && studioState.storyWithScenes && (
-                    <TimelinePage
+                {studioState.currentStep === 'METADATA' && studioState.storyWithScenes && (
+                    <MetadataPage
                         storyWithScenes={studioState.storyWithScenes}
-                        onComplete={handleTimelineComplete}
+                        existingMetadata={studioState.metadata}
+                        onComplete={handleMetadataComplete}
                         onBack={() => goToStep('IMAGES')}
                     />
                 )}
 
-                {studioState.currentStep === 'EDITOR' && (
-                    <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm p-12 text-center">
-                        <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <Loader2 className="w-8 h-8" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Editor de Vídeo</h2>
-                        <p className="text-gray-500 mb-6">Esta funcionalidade está em desenvolvimento.</p>
-                        <button
-                            onClick={() => goToStep('TIMELINE')}
-                            className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
-                        >
-                            Voltar para Timeline
-                        </button>
-                    </div>
+                {studioState.currentStep === 'TIMELINE' && studioState.storyWithScenes && (
+                    <TimelinePage
+                        storyWithScenes={studioState.storyWithScenes}
+                        onComplete={handleTimelineComplete}
+                        onBack={() => goToStep('METADATA')}
+                    />
                 )}
+
+                {/* EDITOR step is temporarily disabled for the children's-story flow — TIMELINE is the final step for now. */}
             </main>
 
             {/* Global Saving Indicator */}

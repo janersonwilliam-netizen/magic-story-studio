@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_INSTRUCTIONS_CLASSICA, DEFAULT_INSTRUCTIONS_BIBLICA } from '../lib/promptDefaults';
+import { IMAGE_STYLE_2D, IMAGE_STYLE_3D } from '../lib/imageStyle';
 
 export interface GenerateStoryParams {
     title: string;
@@ -154,6 +155,71 @@ export async function generateStoryWithGemini(
         story_text: text || JSON.stringify(data),
         narration_text: text || JSON.stringify(data),
         rawScenes: data.cenas
+    };
+}
+
+// ── Metadados para YouTube (título viral, descrição, tags) ─────────────────
+export interface GenerateStoryMetadataParams {
+    title: string;
+    script: string;
+    theme?: string; // 'classica' | 'biblica'
+}
+
+export interface StoryMetadataResult {
+    viralTitle: string;
+    description: string;
+    tags: string[];
+    pinnedComment: string;
+}
+
+export async function generateStoryMetadata(params: GenerateStoryMetadataParams): Promise<StoryMetadataResult> {
+    const isBiblica = params.theme === 'biblica';
+    const broadTerms = isBiblica
+        ? 'histórias bíblicas, historinhas para crianças, Bíblia infantil, desenho biblico'
+        : 'histórias infantis, contos para crianças, desenho animado, historinha para dormir';
+
+    const prompt = `Você é um especialista em SEO e crescimento de canais do YouTube, focado em fazer vídeos infantis viralizarem através do algoritmo (CTR do título/thumbnail + retenção + engajamento — os 3 fatores que o YouTube mais usa para recomendar um vídeo).
+
+Título da história: "${params.title}"
+Trecho do roteiro (primeiros 300 caracteres): "${params.script.substring(0, 300)}..."
+
+Gere metadados otimizados para MAXIMIZAR o desempenho no algoritmo do YouTube, seguindo exatamente estas regras:
+
+TÍTULO (principal fator de CTR):
+- Máximo 60 caracteres (o YouTube corta o resto na busca e no celular)
+- Coloque a palavra-chave/tema principal${isBiblica ? ' (ex: o nome do personagem ou episódio bíblico)' : ' (ex: o tipo de história ou personagem central)'} logo no INÍCIO do título — o começo pesa mais para busca e recomendação
+- Crie curiosidade genuína (pergunta, gancho emocional, promessa de descoberta) SEM prometer nada que a história não cumpra — título enganoso derruba a retenção e o algoritmo pune o vídeo por isso
+- Evite CAIXA ALTA constante e excesso de emojis/pontuação (!!! ???), isso é lido como spam pelo YouTube e pelos pais
+
+DESCRIÇÃO (os primeiros ~125 caracteres aparecem na busca e no feed ANTES do "mostrar mais" — é a parte que decide se a pessoa clica):
+- Primeira linha: gancho forte que já contém a palavra-chave principal, pensado para quem só vai ler essa linha
+- Depois: parágrafo de 3-4 frases resumindo a história e a lição/moral aprendida ao final
+- Uma pergunta simples para o espectador (ou os pais) responderem nos comentários — perguntas geram comentários, e comentários são um dos sinais mais fortes que o YouTube usa pra recomendar o vídeo
+- Linha convidando a curtir, comentar, se inscrever e ativar o sininho
+- No máximo 6 a 8 hashtags realmente relevantes ao final (o YouTube só mostra as 3 primeiras acima do título; excesso de hashtags é tratado como spam)
+
+TAGS:
+- Entre 15 e 20 tags, sem ultrapassar ~450 caracteres somados (o limite técnico do YouTube é 500)
+- A primeira tag deve ser a busca mais provável que um pai ou criança digitaria para achar ESSE vídeo específico (ela tem peso extra pro YouTube)
+- Misture termos amplos (${broadTerms}) com termos de cauda longa específicos desta história
+- Não repita a mesma tag em variações inúteis
+
+COMENTÁRIO FIXADO (engajamento):
+- Crie uma pergunta curta e simples para o criador fixar como primeiro comentário do vídeo, convidando pais/crianças a responder — isso gera comentários logo nas primeiras horas, o que ajuda o vídeo a "pegar tração" no algoritmo
+
+- Tudo em PORTUGUÊS BRASILEIRO
+
+Retorne APENAS um JSON válido:
+{"viralTitle": "...", "description": "...", "tags": ["tag1", "tag2", ...], "pinnedComment": "..."}`;
+
+    const raw = await callVertexText(prompt, { temperature: 0.7 });
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    return {
+        viralTitle: parsed.viralTitle,
+        description: parsed.description,
+        tags: parsed.tags,
+        pinnedComment: parsed.pinnedComment,
     };
 }
 
@@ -603,9 +669,7 @@ export async function generateImagePrompt(params: GenerateImagePromptParams): Pr
 
     // Style
     const is2D = params.visual_style === 'Estilo 2D Cartoon';
-    const styleStr = is2D
-        ? 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, cinematic lighting matching the scene setting, soft colorful shading, very vibrant colors, crisp clean outlines, animated children storybook style, NO 3D rendering, NO CGI, well-proportioned anatomy, correct number of limbs'
-        : '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, cinematic lighting matching the scene setting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs';
+    const styleStr = is2D ? IMAGE_STYLE_2D : IMAGE_STYLE_3D;
 
     // Emotion
     const emotionStr = params.emotion ? `, ${params.emotion} mood` : '';

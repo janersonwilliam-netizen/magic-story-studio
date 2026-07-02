@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Loader2, RefreshCw, ArrowRight, ArrowLeft } from 'lucide-react';
-import { generatePalitoScript } from '../../services/palitoGemini';
+import { generatePalitoScript, generatePalitoShortsScript } from '../../services/palitoGemini';
+import { PalitoFormat } from '../../types/palito';
 
 interface ScriptPageProps {
     title: string;
+    format?: PalitoFormat;
     existingScript?: string;
     onComplete: (script: string) => void;
     onBack: () => void;
 }
 
-export function ScriptPage({ title, existingScript, onComplete, onBack }: ScriptPageProps) {
+export function ScriptPage({ title, format = 'VIDEO', existingScript, onComplete, onBack }: ScriptPageProps) {
+    const isShorts = format === 'SHORTS';
     const [script, setScript] = useState(existingScript || '');
     const [loading, setLoading] = useState(!existingScript);
     const [error, setError] = useState('');
@@ -17,9 +20,13 @@ export function ScriptPage({ title, existingScript, onComplete, onBack }: Script
     const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
     const estimatedMinutes = wordCount > 0 ? (wordCount / 140) : 0;
     const estimatedTime = wordCount > 0
-        ? `~${estimatedMinutes.toFixed(1).replace('.', ',')} min`
+        ? isShorts
+            ? `~${Math.round(estimatedMinutes * 60)}s`
+            : `~${estimatedMinutes.toFixed(1).replace('.', ',')} min`
         : '';
-    const wordCountColor = wordCount < 700 ? 'text-yellow-400' : wordCount > 900 ? 'text-red-400' : 'text-green-400';
+    const minWords = isShorts ? 140 : 700;
+    const maxWords = isShorts ? 190 : 900;
+    const wordCountColor = wordCount < minWords ? 'text-yellow-400' : wordCount > maxWords ? 'text-red-400' : 'text-green-400';
 
     useEffect(() => {
         if (!existingScript) generateScript();
@@ -29,7 +36,9 @@ export function ScriptPage({ title, existingScript, onComplete, onBack }: Script
         setLoading(true);
         setError('');
         try {
-            const result = await generatePalitoScript(title);
+            const result = isShorts
+                ? await generatePalitoShortsScript(title)
+                : await generatePalitoScript(title);
             setScript(result);
         } catch (e: any) {
             setError(e.message || 'Erro ao gerar roteiro. Tente novamente.');
@@ -48,7 +57,9 @@ export function ScriptPage({ title, existingScript, onComplete, onBack }: Script
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-4">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-gray-400 text-sm">Gerando roteiro de 700–900 palavras...</p>
+                    <p className="text-gray-400 text-sm">
+                        {isShorts ? 'Gerando roteiro de até 60 segundos...' : 'Gerando roteiro de 700–900 palavras...'}
+                    </p>
                 </div>
             ) : (
                 <>
@@ -70,7 +81,11 @@ export function ScriptPage({ title, existingScript, onComplete, onBack }: Script
                             rows={20}
                             className="w-full bg-[#242426] border border-border text-white rounded-lg px-4 py-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                         />
-                        <p className="text-xs text-gray-500">Meta: 700–900 palavras · 4–6 minutos de narração (base: 140 palavras/min)</p>
+                        <p className="text-xs text-gray-500">
+                            {isShorts
+                                ? 'Meta: 140–190 palavras · até 60 segundos de narração (base: 140 palavras/min)'
+                                : 'Meta: 700–900 palavras · 4–6 minutos de narração (base: 140 palavras/min)'}
+                        </p>
                     </div>
 
                     <div className="flex justify-between pt-2">

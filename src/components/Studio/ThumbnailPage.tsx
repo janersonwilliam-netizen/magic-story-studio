@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { StoryWithScenes } from '../../types/studio';
 import { translateTitle } from '../../services/gemini';
 import { generateImageWithReferences } from '../../services/google_image';
+import { IMAGE_STYLE_2D, IMAGE_STYLE_3D } from '../../lib/imageStyle';
 import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, User, Download } from 'lucide-react';
 
 interface ThumbnailPageProps {
@@ -155,11 +156,15 @@ export function ThumbnailPage({ storyWithScenes, onComplete, onBack }: Thumbnail
             let prompt = '';
 
             // Enhanced prompt construction
+            // NOTE: the literal phrase "widescreen 16:9" below is required — translateAndCompactPrompt
+            // (google_image.ts) uses it to detect this prompt is already English and skip the legacy
+            // regex-based rebuild, which otherwise truncates everything after CENA: to 150 chars and
+            // drops the actual scene/pose description before it ever reaches the image model.
             if (language !== 'original') {
                 // Prompt for MODIFICATION / VARIATION
                 const styleMod = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
-                    ? `Premium 2D Cartoon style. ${titleBrief}`
-                    : `Animated 3D style. ${titleBrief}`;
+                    ? `${IMAGE_STYLE_2D}, widescreen 16:9 cinematic poster. ${titleBrief}`
+                    : `${IMAGE_STYLE_3D}, widescreen 16:9 cinematic poster. ${titleBrief}`;
 
                 prompt = `TITULO: ${effectiveTitle}
 CENA: Movie Poster Layout. ${styleMod}
@@ -183,8 +188,8 @@ EMOÇÃO: Happy, Excited, Adventurous.`;
                 }
 
                 const styleModOrig = storyWithScenes.visualStyle === 'Estilo 2D Cartoon'
-                    ? `Premium 2D Cartoon style. ${titleBrief} Vibrant colors, magical atmosphere, crisp lines, 16:9 wide cinematic poster, NO 3D rendering.`
-                    : `Animated 3D children movie style. ${titleBrief} Cinematic lighting, magical atmosphere, depth of field, 8k resolution, 16:9 wide cinematic poster.`;
+                    ? `${IMAGE_STYLE_2D}. ${titleBrief} Magical atmosphere, widescreen 16:9 cinematic poster.`
+                    : `${IMAGE_STYLE_3D}. ${titleBrief} Magical atmosphere, depth of field, 8k resolution, widescreen 16:9 cinematic poster.`;
 
                 prompt = `TITULO: ${effectiveTitle}
 CENA: Movie Poster Layout. ${styleModOrig}

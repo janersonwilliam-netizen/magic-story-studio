@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PenLine, Plus, Clock, Trash2, Loader2, ArrowRight } from 'lucide-react';
 import { palitoStorage, PalitoProject } from '../../lib/palitoStorage';
 import { useAuth } from '../../contexts/AuthContext';
-import { PALITO_STEP_LABELS, PalitoStep, PALITO_STEPS } from '../../types/palito';
+import { PALITO_STEP_LABELS, PalitoStep, stepsForFormat } from '../../types/palito';
 
 interface LibraryPageProps {
     onNewProject: () => void;
@@ -43,9 +43,10 @@ export function LibraryPage({ onNewProject, onOpenProject }: LibraryPageProps) {
         }
     };
 
-    const stepProgress = (currentStep: PalitoStep) => {
-        const idx = PALITO_STEPS.indexOf(currentStep);
-        return { current: idx, total: PALITO_STEPS.length };
+    const stepProgress = (currentStep: PalitoStep, format: PalitoProject['format']) => {
+        const steps = stepsForFormat(format);
+        const idx = steps.indexOf(currentStep);
+        return { current: idx, total: steps.length };
     };
 
     return (
@@ -90,7 +91,7 @@ export function LibraryPage({ onNewProject, onOpenProject }: LibraryPageProps) {
                 /* Grid */
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
                     {projects.map(project => {
-                        const { current, total } = stepProgress(project.currentStep);
+                        const { current, total } = stepProgress(project.currentStep, project.format);
                         const progressPct = Math.round((current / (total - 1)) * 100);
 
                         return (
@@ -125,7 +126,12 @@ export function LibraryPage({ onNewProject, onOpenProject }: LibraryPageProps) {
                                     <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
 
                                     {/* Status badge */}
-                                    <div className="absolute top-2 right-2">
+                                    <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                                        {project.format === 'SHORTS' && (
+                                            <span className="px-2 py-0.5 rounded text-xs font-bold bg-primary/30 text-primary">
+                                                Shorts
+                                            </span>
+                                        )}
                                         <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                                             project.isComplete
                                                 ? 'bg-green-900/40 text-green-400'

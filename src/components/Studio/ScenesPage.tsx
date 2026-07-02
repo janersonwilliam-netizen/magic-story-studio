@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { StoryWithNarration, StoryWithScenes, Scene, CharacterDNA } from '../../types/studio';
 import { extractCharactersFromStory, extractStructuredCharacterData, generateScenesWithGemini, stripGreetingPrefix, stripClosingCTA } from '../../services/gemini';
 import { generateImageWithNanoBanana } from '../../services/google_image';
+import { IMAGE_STYLE_2D, IMAGE_STYLE_3D } from '../../lib/imageStyle';
 import { Loader2, User, Palette, Shirt, Sparkles, RefreshCw } from 'lucide-react';
 
 interface ScenesPageProps {
@@ -190,9 +191,9 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
             console.log(`[ScenesPage] Generating reference image for ${characterName}...`);
 
             // Build a flat, highly descriptive prompt. STYLE GOES FIRST to avoid truncation.
-            const baseStyle = story.visualStyle === 'Estilo 2D Cartoon'
-                ? '2D cartoon illustration, flat cel shading, clean crisp outlines, vibrant colors, NO 3D, NO CGI, NO photorealism'
-                : '3D CGI Animation Style, BIG expressive eyes, soft rounded features';
+            // Usa o mesmo vocabulário de estilo da capa e das cenas (src/lib/imageStyle.ts) para que
+            // a ficha de referência do personagem já nasça no mesmo estilo visual usado no resto da história.
+            const baseStyle = story.visualStyle === 'Estilo 2D Cartoon' ? IMAGE_STYLE_2D : IMAGE_STYLE_3D;
 
             // Truncate description to prevent it from pushing style instructions out of the prompt
             const shortDesc = (character.description || '').substring(0, 150);

@@ -1,7 +1,10 @@
 /**
  * Types for the Histórias Palito module
- * Pipeline: IDEAS → SCRIPT → NARRATION → TRANSCRIPTION → CHARACTER → THUMBNAIL → SCENES → TIMELINE → METADATA
+ * Pipeline (VIDEO): IDEAS → SCRIPT → NARRATION → TRANSCRIPTION → CHARACTER → THUMBNAIL → SCENES → TIMELINE → METADATA
+ * Pipeline (SHORTS): IDEAS → SCRIPT → NARRATION → TRANSCRIPTION → CHARACTER → SCENES → TIMELINE → METADATA (sem THUMBNAIL)
  */
+
+export type PalitoFormat = 'VIDEO' | 'SHORTS';
 
 export type PalitoStep =
     | 'IDEAS'
@@ -25,6 +28,11 @@ export const PALITO_STEPS: PalitoStep[] = [
     'TIMELINE',
     'METADATA',
 ];
+
+export function stepsForFormat(format: PalitoFormat | undefined): PalitoStep[] {
+    if (format === 'SHORTS') return PALITO_STEPS.filter(s => s !== 'THUMBNAIL');
+    return PALITO_STEPS;
+}
 
 export const PALITO_STEP_LABELS: Record<PalitoStep, string> = {
     IDEAS: 'Ideias',
@@ -62,6 +70,7 @@ export interface PalitoMetadata {
 
 export interface PalitoState {
     projectId?: string;
+    format?: PalitoFormat;
     currentStep: PalitoStep;
     tema?: string;
     ideas?: string[];

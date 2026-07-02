@@ -3,10 +3,11 @@
  */
 
 import { supabase } from './supabase';
-import { PalitoState, PalitoStep } from '../types/palito';
+import { PalitoState, PalitoStep, PalitoFormat } from '../types/palito';
 
 export interface PalitoProject {
     id: string;
+    format: PalitoFormat;
     selectedTitle: string;
     tema?: string;
     thumbnailUrl?: string;
@@ -24,6 +25,7 @@ export interface PalitoProjectFull extends PalitoProject {
 function rowToProject(row: any): PalitoProject {
     return {
         id: row.id,
+        format: (row.format as PalitoFormat) || 'VIDEO',
         selectedTitle: row.selected_title || 'Sem título',
         tema: row.tema || undefined,
         thumbnailUrl: row.thumbnail_url || undefined,
@@ -39,6 +41,7 @@ function rowToProjectFull(row: any): PalitoProjectFull {
     const base = rowToProject(row);
     const state: PalitoState = {
         projectId: row.id,
+        format: base.format,
         currentStep: base.currentStep,
         tema: row.tema,
         ideas: row.ideas || undefined,
@@ -60,7 +63,7 @@ export const palitoStorage = {
     async listProjects(): Promise<PalitoProject[]> {
         const { data, error } = await supabase
             .from('palito_projects')
-            .select('id, selected_title, tema, thumbnail_url, character_image_url, current_step, metadata, created_at, updated_at')
+            .select('id, format, selected_title, tema, thumbnail_url, character_image_url, current_step, metadata, created_at, updated_at')
             .order('updated_at', { ascending: false });
         if (error) throw error;
         return (data || []).map(rowToProject);
@@ -76,10 +79,10 @@ export const palitoStorage = {
         return rowToProjectFull(data);
     },
 
-    async createProject(userId: string): Promise<string> {
+    async createProject(userId: string, format: PalitoFormat = 'VIDEO'): Promise<string> {
         const { data, error } = await supabase
             .from('palito_projects')
-            .insert({ user_id: userId, current_step: 'IDEAS' })
+            .insert({ user_id: userId, current_step: 'IDEAS', format })
             .select('id')
             .single();
         if (error) throw error;
@@ -90,6 +93,7 @@ export const palitoStorage = {
         const { error } = await supabase
             .from('palito_projects')
             .update({
+                format: state.format || 'VIDEO',
                 tema: state.tema || null,
                 ideas: state.ideas || null,
                 selected_title: state.selectedTitle || null,

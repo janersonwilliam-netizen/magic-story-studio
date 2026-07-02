@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Menu, X } from 'lucide-react';
 
-type PageType = 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'narration-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito' | 'palito-test';
+type PageType = 'stories' | 'prompt-master' | 'settings' | 'tests' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito';
 
 // Map routes to page IDs
 const routeToPage: Record<string, PageType> = {
@@ -12,15 +12,17 @@ const routeToPage: Record<string, PageType> = {
     '/files': 'files',
     '/settings': 'settings',
     '/prompt-master': 'prompt-master',
-    '/image-test': 'image-test',
-    '/pollinations-test': 'pollinations-test',
-    '/narration-test': 'narration-test',
+    '/tests': 'tests',
+    '/image-test': 'tests',
+    '/pollinations-test': 'tests',
+    '/narration-test': 'tests',
+    '/palito-test': 'tests',
+    '/biblica-test': 'tests',
     '/ideas': 'ideas',
     '/playground': 'playground',
     '/video-gen': 'video-gen',
     '/music-clip': 'music-clip',
     '/palito': 'palito',
-    '/palito-test': 'palito-test',
 };
 
 // Map page IDs to routes
@@ -30,15 +32,12 @@ const pageToRoute: Record<PageType, string> = {
     'files': '/files',
     'settings': '/settings',
     'prompt-master': '/prompt-master',
-    'image-test': '/image-test',
-    'pollinations-test': '/pollinations-test',
-    'narration-test': '/narration-test',
+    'tests': '/tests',
     'ideas': '/ideas',
     'playground': '/playground',
     'video-gen': '/video-gen',
     'music-clip': '/music-clip',
     'palito': '/palito',
-    'palito-test': '/palito-test',
 };
 
 export function MainLayout() {

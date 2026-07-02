@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { StoryConfig, StoryWithNarration } from '../../types/studio';
 import { generateStoryWithGemini } from '../../services/gemini';
-import { generateLongAudioNarration, GEMINI_VOICES } from '../../services/tts';
+import { generateAudioNarration } from '../../services/tts';
 import { Loader2, Check, Sparkles, Volume2, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -26,8 +26,13 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
     const [storyText, setStoryText] = useState(existingStory?.storyText || '');
     const [rawScenes, setRawScenes] = useState<any[]>(existingStory?.rawScenes || []);
     const [error, setError] = useState('');
-    const [voiceName, setVoiceName] = useState(existingStory?.voiceName || 'Kore');
-    const [emotion, setEmotion] = useState(existingStory?.emotion || 'warmly');
+    // Padrão por tema: histórias bíblicas pedem tom solene/narrativo (Charon +
+    // authoritative); clássicas infantis pedem tom lúdico de contação de
+    // histórias (Kore + storyteller). O usuário ainda pode trocar manualmente.
+    const defaultVoice = config.theme === 'biblica' ? 'Charon' : 'Kore';
+    const defaultEmotion = config.theme === 'biblica' ? 'authoritative' : 'storyteller';
+    const [voiceName, setVoiceName] = useState(existingStory?.voiceName || defaultVoice);
+    const [emotion, setEmotion] = useState(existingStory?.emotion || defaultEmotion);
     const [generatingAudio, setGeneratingAudio] = useState(false);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState(existingStory?.audioUrl || '');
 
@@ -99,12 +104,13 @@ export function NarrationPage({ config, existingStory, onComplete, onBack }: Nar
             console.log('[NarrationPage] Generating audio preview with voice:', voiceName, 'emotion:', emotion);
             const narrationText = storyText.replace(/\\n/g, '\n');
 
-            const audioUrl = await generateLongAudioNarration({
+            // Mesmo padrão do Palito: uma ÚNICA geração Gemini para a história toda
+            // (uma voz só, timbre consistente) + nivelador de volume. Só fragmenta
+            // em blocos grandes (4000 chars) se o provedor recusar por tamanho.
+            const audioUrl = await generateAudioNarration({
                 text: narrationText,
                 voiceName,
-                emotion: emotion as any,
-                maxChunkChars: 900,
-                disableLeveling: false
+                emotion: emotion as any
             });
 
             setAudioPreviewUrl(audioUrl);

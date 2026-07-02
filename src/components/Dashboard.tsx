@@ -114,7 +114,7 @@ export function Dashboard() {
                 // Grid of Stories
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                     {stories.map((story) => {
-                        const steps = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'TIMELINE', 'EDITOR'];
+                        const steps = ['CONFIG', 'NARRATION', 'SCENES', 'THUMBNAIL', 'IMAGES', 'METADATA', 'TIMELINE', 'EDITOR'];
                         const currentStepIndex = steps.indexOf(story.data?.currentStep ?? 'CONFIG');
 
                         return (

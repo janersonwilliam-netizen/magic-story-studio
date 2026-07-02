@@ -135,6 +135,16 @@ export interface ExportSettings {
 }
 
 /**
+ * YouTube metadata (title/description/tags) generated after the images step
+ */
+export interface StoryMetadata {
+    viralTitle: string;
+    description: string;
+    tags: string[];
+    pinnedComment: string;
+}
+
+/**
  * Complete Studio state
  */
 export interface StudioState {
@@ -142,6 +152,7 @@ export interface StudioState {
     config?: StoryConfig;
     story?: StoryWithNarration;
     storyWithScenes?: StoryWithScenes;
+    metadata?: StoryMetadata;
     timeline?: TimelineState;
     exportSettings?: ExportSettings;
 }
@@ -152,6 +163,7 @@ export type StudioStep =
     | 'SCENES'
     | 'THUMBNAIL'
     | 'IMAGES'
+    | 'METADATA'
     | 'TIMELINE'
     | 'EDITOR';
 

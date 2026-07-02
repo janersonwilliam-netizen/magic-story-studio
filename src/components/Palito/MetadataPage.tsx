@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, RefreshCw, Copy, Check, ArrowLeft, Download, Package } from 'lucide-react';
 import JSZip from 'jszip';
 import { generatePalitoMetadata } from '../../services/palitoGemini';
-import { PalitoMetadata, PalitoSceneLine } from '../../types/palito';
+import { PalitoMetadata, PalitoSceneLine, PalitoFormat } from '../../types/palito';
 
 interface MetadataPageProps {
     title: string;
     script: string;
     scenes: PalitoSceneLine[];
+    format?: PalitoFormat;
     audioUrl?: string;
     thumbnailUrl?: string;
     videoUrl?: string;
@@ -84,7 +85,7 @@ function mimeToExt(mime: string): string {
     return 'jpg';
 }
 
-export function MetadataPage({ title, script, scenes, audioUrl, thumbnailUrl, videoUrl, existingMetadata, onComplete, onBack }: MetadataPageProps) {
+export function MetadataPage({ title, script, scenes, format = 'VIDEO', audioUrl, thumbnailUrl, videoUrl, existingMetadata, onComplete, onBack }: MetadataPageProps) {
     const [metadata, setMetadata] = useState<PalitoMetadata | null>(existingMetadata || null);
     const [loading, setLoading] = useState(!existingMetadata);
     const [error, setError] = useState('');
@@ -99,7 +100,7 @@ export function MetadataPage({ title, script, scenes, audioUrl, thumbnailUrl, vi
         setLoading(true);
         setError('');
         try {
-            const result = await generatePalitoMetadata(title, script);
+            const result = await generatePalitoMetadata(title, script, format);
             setMetadata(result);
         } catch (e: any) {
             setError(e.message || 'Erro ao gerar metadados. Tente novamente.');

@@ -19,6 +19,8 @@ import { VideoGenPage } from './components/VideoGenPage';
 import { MusicClipPage } from './components/MusicClipPage';
 import { PalitoIndex } from './components/Palito';
 import PalitoTestPage from './components/PalitoTestPage';
+import BiblicalTestPage from './components/BiblicalTestPage';
+import { TestsIndexPage } from './components/TestsIndexPage';
 
 export default function App() {
     return (
@@ -42,6 +44,7 @@ export default function App() {
                         <Route path="/files" element={<FilesPage />} />
                         <Route path="/settings" element={<SettingsPage />} />
                         <Route path="/prompt-master" element={<PromptMasterPage />} />
+                        <Route path="/tests" element={<TestsIndexPage />} />
                         <Route path="/image-test" element={<ImageTestPage />} />
                         <Route path="/pollinations-test" element={<PollinationsTestPage />} />
                         <Route path="/narration-test" element={<NarrationTestPage />} />
@@ -51,6 +54,7 @@ export default function App() {
                         <Route path="/music-clip" element={<MusicClipPage />} />
                         <Route path="/palito" element={<PalitoIndex />} />
                         <Route path="/palito-test" element={<PalitoTestPage />} />
+                        <Route path="/biblica-test" element={<BiblicalTestPage />} />
                     </Route>
 
                     {/* Default redirect */}

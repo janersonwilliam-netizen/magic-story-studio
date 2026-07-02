@@ -1,11 +1,11 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video, FolderOpen, Youtube, Flower2, Bot, Music, Volume2, PenLine } from 'lucide-react';
+import { BookOpen, Sparkles, Settings, LogOut, User, TestTube, Home, Video, FolderOpen, Youtube, Bot, Music, PenLine } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
-    currentPage: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'narration-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito' | 'palito-test';
-    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'image-test' | 'pollinations-test' | 'narration-test' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito' | 'palito-test') => void;
+    currentPage: 'stories' | 'prompt-master' | 'settings' | 'tests' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito';
+    onNavigate: (page: 'stories' | 'prompt-master' | 'settings' | 'tests' | 'studio' | 'files' | 'ideas' | 'playground' | 'video-gen' | 'music-clip' | 'palito') => void;
     isOpen: boolean;
 }
 
@@ -19,14 +19,11 @@ export function Sidebar({ currentPage, onNavigate, isOpen }: SidebarProps) {
         { id: 'palito' as const, label: 'Histórias Palito', icon: PenLine },
         { id: 'files' as const, label: 'Biblioteca', icon: FolderOpen },
         { id: 'prompt-master' as const, label: 'Prompt Mestre', icon: Sparkles },
-        { id: 'palito-test' as const, label: 'Teste Palito', icon: TestTube },
-        { id: 'image-test' as const, label: 'Teste de Imagens', icon: TestTube },
-        { id: 'pollinations-test' as const, label: 'Teste Pollinations', icon: Flower2 },
-        { id: 'narration-test' as const, label: 'Geração de Áudio', icon: Volume2 },
         { id: 'playground' as const, label: 'Playground', icon: Bot },
         { id: 'ideas' as const, label: 'Pesquisa de Ideias', icon: Youtube },
         { id: 'video-gen' as const, label: 'Geração de Vídeo', icon: Video },
         { id: 'music-clip' as const, label: 'Clipe Musical', icon: Music },
+        { id: 'tests' as const, label: 'Páginas de Teste', icon: TestTube },
     ];
 
     // Items for the bottom/secondary section

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Layers, Loader2, RefreshCw, ArrowRight, ArrowLeft, CheckCircle, AlertCircle, ImageIcon } from 'lucide-react';
 import { generatePalitoScenePrompts } from '../../services/palitoGemini';
 import { generateImageWithNanoBanana, generateImageWithReferences } from '../../services/google_image';
-import { PalitoTranscriptionLine, PalitoSceneLine, StoryCharacter } from '../../types/palito';
+import { PalitoTranscriptionLine, PalitoSceneLine, StoryCharacter, PalitoFormat } from '../../types/palito';
 
 interface ScenesPageProps {
     title: string;
@@ -10,11 +10,14 @@ interface ScenesPageProps {
     characterImageUrl: string;
     storyCharacters?: StoryCharacter[];
     existingScenes?: PalitoSceneLine[];
+    format?: PalitoFormat;
     onComplete: (scenes: PalitoSceneLine[]) => void;
     onBack: () => void;
 }
 
-export function ScenesPage({ title, transcription, characterImageUrl, storyCharacters = [], existingScenes, onComplete, onBack }: ScenesPageProps) {
+export function ScenesPage({ title, transcription, characterImageUrl, storyCharacters = [], existingScenes, format = 'VIDEO', onComplete, onBack }: ScenesPageProps) {
+    const aspectRatio = format === 'SHORTS' ? '9:16' : '16:9';
+    const previewAspectClass = format === 'SHORTS' ? 'aspect-[9/16] max-w-[280px] mx-auto' : 'aspect-video';
     const [scenes, setScenes] = useState<PalitoSceneLine[]>(
         existingScenes || transcription.map(t => ({ ...t, imagePrompt: '', imageUrl: undefined }))
     );
@@ -36,7 +39,9 @@ export function ScenesPage({ title, transcription, characterImageUrl, storyChara
             const prompts = await generatePalitoScenePrompts(
                 transcription,
                 title,
-                (done, total) => setPromptBatchMsg(`Lote ${done} de ${total}...`)
+                (done, total) => setPromptBatchMsg(`Lote ${done} de ${total}...`),
+                format,
+                storyCharacters
             );
             setScenes(prev => prev.map((s, i) => ({ ...s, imagePrompt: prompts[i] || s.imagePrompt })));
             setPromptsGenerated(true);
@@ -53,22 +58,28 @@ export function ScenesPage({ title, transcription, characterImageUrl, storyChara
         setErrors(prev => ({ ...prev, [i]: '' }));
         try {
             const scene = scenes[i];
-            const sceneTextLower = scene.text.toLowerCase();
-
-            // Collect reference images: story characters mentioned in scene text
-            // (narrator style is already baked into the prompt via STYLE_ANCHOR)
+            let imagePrompt = scene.imagePrompt;
             const refs: string[] = [];
-            for (const char of storyCharacters) {
-                if (char.imageUrl) {
-                    const nameParts = char.name.toLowerCase().split(' ');
-                    const mentioned = nameParts.some(part => part.length > 3 && sceneTextLower.includes(part));
-                    if (mentioned) refs.push(char.imageUrl);
+
+            // Parse ##REFS:CharName## prefix — story character scenes
+            const refsMatch = imagePrompt.match(/^##REFS:([^#]+)##\s*/);
+            if (refsMatch) {
+                imagePrompt = imagePrompt.replace(refsMatch[0], '');
+                const targetName = refsMatch[1].trim().toLowerCase();
+                for (const char of storyCharacters) {
+                    if (char.imageUrl && char.name.toLowerCase().includes(targetName)) {
+                        refs.push(char.imageUrl);
+                    }
+                }
+                // Fallback: if no match by name, use all available story characters
+                if (refs.length === 0) {
+                    storyCharacters.filter(c => c.imageUrl).forEach(c => refs.push(c.imageUrl!));
                 }
             }
 
             const url = refs.length > 0
-                ? await generateImageWithReferences(scene.imagePrompt, refs)
-                : await generateImageWithNanoBanana(scene.imagePrompt);
+                ? await generateImageWithReferences(imagePrompt, refs, undefined, undefined, aspectRatio)
+                : await generateImageWithNanoBanana(imagePrompt, undefined, aspectRatio);
 
             setScenes(prev => prev.map((s, idx) => idx === i ? { ...s, imageUrl: url } : s));
         } catch (e: any) {
@@ -183,7 +194,7 @@ export function ScenesPage({ title, transcription, characterImageUrl, storyChara
                             </div>
 
                             {/* Image area */}
-                            <div className="bg-[#242426] border border-border rounded-xl overflow-hidden aspect-video flex items-center justify-center relative">
+                            <div className={`bg-[#242426] border border-border rounded-xl overflow-hidden ${previewAspectClass} flex items-center justify-center relative`}>
                                 {selected.imageUrl ? (
                                     <img
                                         src={selected.imageUrl}

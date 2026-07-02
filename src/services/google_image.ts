@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { IMAGE_STYLE_2D, IMAGE_STYLE_3D } from '../lib/imageStyle';
 /**
  * Gemini Image Generation Service
  * Uses the backend /api/generate-image endpoint with Gemini 3.1 Flash Image.
@@ -45,10 +46,8 @@ function promptWantsText(text: string): boolean {
 async function translateAndCompactPrompt(prompt: string, styleConfig?: string): Promise<string> {
     // Helper: builds the mandatory style suffix based on styleConfig
     function getStyleSuffix(config?: string): string {
-        if (config === 'Estilo 2D Cartoon') {
-            return '. STYLE: Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, scene-specific cinematic lighting, very vibrant colors, soft colorful shading, crisp clean outlines, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed environment background, unique location and camera angle for this scene, NO repeated generic sunny forest path, NO white background, NO plain background, NO 3D rendering, NO CGI, NO photorealism, widescreen 16:9';
-        }
-        return '. STYLE: 3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, scene-specific cinematic lighting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs, fully detailed environment background, unique location and camera angle for this scene, NO repeated generic sunny forest path, NO white background, NO plain background, children book illustration, widescreen 16:9';
+        const style = config === 'Estilo 2D Cartoon' ? IMAGE_STYLE_2D : IMAGE_STYLE_3D;
+        return `. STYLE: ${style}, scene-specific cinematic lighting, fully detailed environment background, unique location and camera angle for this scene, NO repeated generic sunny forest path, NO white background, NO plain background, widescreen 16:9`;
     }
 
     // If the prompt is already in English (our new descriptive prompts), skip translation
@@ -297,12 +296,9 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
         optimized += `${emotionEN} mood, `;
     }
 
-    // 5. Style suffix (simple descriptive, like the successful lion test)
-    if (styleConfig === 'Estilo 2D Cartoon') {
-        optimized += 'Premium 2D cartoon illustration, modern mobile game art style, modern Disney 2D style, rich details, scene-specific cinematic lighting. Very vibrant colors, soft colorful shading, crisp clean outlines. Animated children storybook style, cute, charming, well-proportioned anatomy, correct number of limbs, fully detailed unique environment background, NO repeated generic sunny forest path, NO white background, NO plain background, NO 3D rendering, NO CGI, widescreen 16:9';
-    } else {
-        optimized += '3D animated children movie style, Pixar-quality charm, big expressive eyes, soft rounded features, scene-specific cinematic lighting, vibrant colors, tactile materials, well-proportioned anatomy, correct number of limbs, fully detailed unique environment background, NO repeated generic sunny forest path, NO white background, NO plain background, children book illustration, widescreen 16:9';
-    }
+    // 5. Style suffix (shared with cover and scene prompts, see src/lib/imageStyle.ts)
+    const styleSuffix = styleConfig === 'Estilo 2D Cartoon' ? IMAGE_STYLE_2D : IMAGE_STYLE_3D;
+    optimized += `${styleSuffix}, scene-specific cinematic lighting, fully detailed unique environment background, NO repeated generic sunny forest path, NO white background, NO plain background, widescreen 16:9`;
 
     // Final cleanup
     optimized = optimized.replace(/,\s*,/g, ',').replace(/\s+/g, ' ').trim();
@@ -327,7 +323,7 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
  * Uses VERIFIED model names from ListModels API
  * Returns a data URL of the generated image
  */
-export async function generateImageWithNanoBanana(prompt: string, styleConfig?: string): Promise<string> {
+export async function generateImageWithNanoBanana(prompt: string, styleConfig?: string, aspectRatio: string = '16:9'): Promise<string> {
     const optimizedPrompt = await translateAndCompactPrompt(prompt, styleConfig);
     console.log('[Vertex Image] Optimized prompt:', optimizedPrompt);
 
@@ -337,7 +333,7 @@ export async function generateImageWithNanoBanana(prompt: string, styleConfig?: 
             const response = await fetch('/api/generate-image', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: optimizedPrompt, aspectRatio: '16:9' }),
+                body: JSON.stringify({ prompt: optimizedPrompt, aspectRatio }),
             });
 
             // Handle rate limiting with retry
@@ -386,12 +382,13 @@ export async function generateImageWithReferences(
     prompt: string,
     referenceImages: string[],
     characterStatuses?: string[],
-    styleConfig?: string
+    styleConfig?: string,
+    aspectRatio: string = '16:9'
 ): Promise<string> {
     if (referenceImages.length === 0) {
-        return generateImageWithNanoBanana(prompt, styleConfig);
+        return generateImageWithNanoBanana(prompt, styleConfig, aspectRatio);
     }
-    
+
     const optimizedPrompt = await translateAndCompactPrompt(prompt, styleConfig);
     const isCoverTextEdit = /KEEP THE VISUAL|SAME background|ONLY CHANGE THE TITLE TEXT/i.test(prompt);
     const enhancedPrompt = isCoverTextEdit
@@ -406,7 +403,7 @@ export async function generateImageWithReferences(
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: enhancedPrompt,
-                    aspectRatio: '16:9',
+                    aspectRatio,
                     referenceImages: referenceImages.slice(0, 5)
                 }),
             });
