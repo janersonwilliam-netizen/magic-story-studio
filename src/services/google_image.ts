@@ -52,9 +52,15 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
 
     // If the prompt is already in English (our new descriptive prompts), skip translation
     // but STILL append style suffix to guarantee consistency
-    const isAlreadyEnglish = prompt.match(/^(A |An |The |Children|3D |2D |Cute |Scene|Title|Unique|Cinematic|Character)/i)
+    // NOTA: prompts que começam com o estilo compartilhado (imageStyle.ts) TAMBÉM são
+    // inglês — o 2D começa com "Premium 2D cartoon illustration" e sem esta detecção
+    // caía no ramo de "tradução", que trunca o prompt e appenda sufixo de CENA
+    // ("NO white background, widescreen 16:9"), estragando fichas de personagem.
+    const isAlreadyEnglish = prompt.match(/^(A |An |The |Children|3D |2D |Cute |Scene|Title|Unique|Cinematic|Character|Premium )/i)
         || prompt.match(/Pixar animation style/i)
         || prompt.match(/children book illustration/i)
+        || prompt.match(/cartoon illustration/i)
+        || prompt.match(/character reference sheet/i)
         || prompt.match(/widescreen 16:9/i);
     
     if (isAlreadyEnglish) {
@@ -318,6 +324,22 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
     return optimized;
 }
 
+// ── Fila global de geração de imagens ───────────────────────────────────────
+// O Vertex limita requisições por minuto; disparar várias gerações em paralelo
+// (ex.: fichas de 5 personagens) causava rajadas de 429 + retries que amplificam
+// a rajada. Serializa TODAS as chamadas de imagem com um pequeno intervalo.
+let imageRequestChain: Promise<unknown> = Promise.resolve();
+const IMAGE_REQUEST_GAP_MS = 1500;
+
+function enqueueImageRequest<T>(task: () => Promise<T>): Promise<T> {
+    const result = imageRequestChain.then(task, task);
+    imageRequestChain = result.then(
+        () => new Promise(r => setTimeout(r, IMAGE_REQUEST_GAP_MS)),
+        () => new Promise(r => setTimeout(r, IMAGE_REQUEST_GAP_MS))
+    );
+    return result;
+}
+
 /**
  * Generate an image using Gemini Image models
  * Uses VERIFIED model names from ListModels API
@@ -326,7 +348,10 @@ async function translateAndCompactPrompt(prompt: string, styleConfig?: string): 
 export async function generateImageWithNanoBanana(prompt: string, styleConfig?: string, aspectRatio: string = '16:9'): Promise<string> {
     const optimizedPrompt = await translateAndCompactPrompt(prompt, styleConfig);
     console.log('[Vertex Image] Optimized prompt:', optimizedPrompt);
+    return enqueueImageRequest(() => requestImageWithRetry(optimizedPrompt, aspectRatio));
+}
 
+async function requestImageWithRetry(optimizedPrompt: string, aspectRatio: string): Promise<string> {
     const maxRetries = 5;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -395,6 +420,23 @@ export async function generateImageWithReferences(
         ? `${optimizedPrompt}, use the reference image as the layout, character, pose and background guide; only change the requested title text, keep the poster composition stable`
         : `${optimizedPrompt}, match only the character identity from the reference images exactly: same character colors, proportions, accessories and facial features. Use the new scene environment, camera angle, lighting and pose from this prompt; do not copy the reference background or repeat the same pose unless explicitly requested`;
 
+    // O fallback fica FORA da tarefa enfileirada: chamar generateImageWithNanoBanana
+    // (que também enfileira) de dentro da fila causaria deadlock.
+    try {
+        return await enqueueImageRequest(() =>
+            requestImageWithReferencesRetry(enhancedPrompt, aspectRatio, referenceImages.slice(0, 5))
+        );
+    } catch (err: any) {
+        console.warn(`[Vertex Image] Falha com refs, fallback para padrão:`, err?.message);
+        return generateImageWithNanoBanana(prompt, styleConfig, aspectRatio);
+    }
+}
+
+async function requestImageWithReferencesRetry(
+    enhancedPrompt: string,
+    aspectRatio: string,
+    referenceImages: string[]
+): Promise<string> {
     const maxRetries = 5;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -404,7 +446,7 @@ export async function generateImageWithReferences(
                 body: JSON.stringify({
                     prompt: enhancedPrompt,
                     aspectRatio,
-                    referenceImages: referenceImages.slice(0, 5)
+                    referenceImages
                 }),
             });
 
@@ -435,10 +477,8 @@ export async function generateImageWithReferences(
                 await new Promise(r => setTimeout(r, waitTime));
                 continue;
             }
-            console.warn(`[Vertex Image] Falha com refs, fallback para padrão:`, err.message);
-            return generateImageWithNanoBanana(prompt, styleConfig);
+            throw err;
         }
     }
-    // Final fallback
-    return generateImageWithNanoBanana(prompt, styleConfig);
+    throw new Error('Falha na geração com referências após múltiplas tentativas');
 }

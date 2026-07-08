@@ -129,7 +129,7 @@ async function generateViaVertexAI(
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { text, voice, styleInstruction } = (await request.json()) as any;
+    const { text, voice, styleInstruction, temperature } = (await request.json()) as any;
 
     if (!text) {
       return Response.json({ error: 'O campo "text" é obrigatório' }, { status: 400 });
@@ -139,10 +139,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     const prompt = styleInstruction ? styleInstruction + '\n\n' + text : text;
 
+    // Temperatura baixa por padrão: o TTS é generativo e com temperatura alta
+    // pode falar um texto diferente do transcript (parafrasear/improvisar).
+    const safeTemperature = typeof temperature === 'number' && temperature >= 0 && temperature <= 2
+      ? temperature
+      : 0.7;
+
     const payload = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         responseModalities: ['AUDIO'],
+        temperature: safeTemperature,
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: { voiceName: selectedVoice },

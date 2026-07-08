@@ -198,9 +198,14 @@ export function ScenesPage({ story, existingData, onComplete, onBack }: ScenesPa
             // Truncate description to prevent it from pushing style instructions out of the prompt
             const shortDesc = (character.description || '').substring(0, 150);
 
-            const characterPrompt = `${baseStyle}. A cute character design of ${character.name}, ${character.species}. Colors: ${character.mainColors.join(', ')}. Clothing: ${character.clothing}. ${character.accessories !== 'Nenhum' ? `Accessories: ${character.accessories}.` : ''} ${shortDesc}. Adorable, friendly, full body portrait, centered, white neutral background, high quality, professional character sheet.`;
+            // "EXACTLY ONE character, alone" é obrigatório: a descrição vinda do LLM
+            // costuma citar outros personagens da história ("com seus filhotes/amigos")
+            // e sem essa trava o modelo desenha todos na ficha de referência.
+            const characterPrompt = `${baseStyle}. Character reference sheet of EXACTLY ONE character: ${character.name}, a single ${character.species}. SOLO portrait — only this one character in the whole image, no other characters, no duplicates, no family, no babies, no friends, no companions, ignore any other characters mentioned in the description. Colors: ${character.mainColors.join(', ')}. Clothing: ${character.clothing}. ${character.accessories !== 'Nenhum' ? `Accessories: ${character.accessories}.` : ''} ${shortDesc}. Adorable, friendly, full body, standing, centered, plain white neutral studio background, high quality, professional character sheet.`;
 
-            const imageUrl = await generateImageWithNanoBanana(characterPrompt, story.visualStyle);
+            // Ficha de personagem é quadrada (corpo inteiro centrado) — 16:9 corta o
+            // personagem no card e induz o modelo a compor "cena" em vez de ficha.
+            const imageUrl = await generateImageWithNanoBanana(characterPrompt, story.visualStyle, '1:1');
 
             setCharacterReferenceImages(prev => ({ ...prev, [characterName]: imageUrl }));
             setGeneratingCharacterImages(prev => ({ ...prev, [characterName]: false }));

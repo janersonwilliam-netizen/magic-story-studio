@@ -1,15 +1,17 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Music, Users, Image, Video, Sparkles, Plus, Trash2, RefreshCw, Loader2, Play, Download, ChevronRight, Wand2 } from "lucide-react";
-import { MusicProject, MusicScene, MusicCharacter, MusicStep } from "../types/music";
+import { MusicProject, MusicScene, MusicCharacter, MusicStep, MusicGenre, MusicDurationTarget } from "../types/music";
 import { VisualStyle } from "../types/studio";
-import { generateMusicScenes, generateMusicCharacters, generateAnimationPrompt, generateMusicCoverPrompt } from "../services/musicClip";
+import { generateMusicScenes, generateMusicCharacters, generateAnimationPrompt, generateMusicCoverPrompt, generateSongLyrics } from "../services/musicClip";
+import { generateSongAudio } from "../services/musicAudio";
 import { generateImageWithNanoBanana as generateImage, generateImageWithReferences } from "../services/google_image";
 import { generateVideoVertex } from "../services/video_service";
 import { DEFAULT_IMAGE_TEMPLATE_3D, DEFAULT_IMAGE_TEMPLATE_2D } from "../lib/promptDefaults";
 
 const STEPS: { key: MusicStep; label: string }[] = [
   { key: "LYRICS", label: "Letra" },
+  { key: "AUDIO", label: "Musica" },
   { key: "CHARACTERS", label: "Personagens" },
   { key: "COVER", label: "Capa" },
   { key: "IMAGES", label: "Imagens" },
@@ -17,6 +19,12 @@ const STEPS: { key: MusicStep; label: string }[] = [
 ];
 
 const VISUAL_STYLES: VisualStyle[] = ["Estilo 2D Cartoon", "Estilo Pixar 3D"];
+const MUSIC_GENRES: MusicGenre[] = ["Música Infantil", "Música Infantil Bíblica"];
+const DURATION_OPTIONS: { key: MusicDurationTarget; label: string }[] = [
+  { key: "curta", label: "Curta (~1 min)" },
+  { key: "media", label: "Média (~2 min)" },
+  { key: "longa", label: "Longa (~3 min)" },
+];
 
 function newProject(): MusicProject {
   return {
@@ -24,6 +32,8 @@ function newProject(): MusicProject {
     title: "",
     artist: "",
     lyrics: "",
+    genre: "Música Infantil",
+    durationTarget: "media",
     visualStyle: "Estilo 2D Cartoon",
     currentStep: "LYRICS",
     scenes: [],
@@ -37,7 +47,25 @@ function newProject(): MusicProject {
 
 function StepLyrics({ project, onChange, onNext }: { project: MusicProject; onChange: (p: Partial<MusicProject>) => void; onNext: () => void }) {
   const [loading, setLoading] = useState(false);
+  const [loadingLyrics, setLoadingLyrics] = useState(false);
   const [error, setError] = useState("");
+
+  const handleGenerateLyrics = async () => {
+    if (!project.title.trim()) {
+      setError("Preencha o titulo da musica.");
+      return;
+    }
+    setLoadingLyrics(true);
+    setError("");
+    try {
+      const lyrics = await generateSongLyrics(project.title, project.genre, project.durationTarget);
+      onChange({ lyrics });
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoadingLyrics(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!project.lyrics.trim() || !project.title.trim()) {
@@ -48,7 +76,7 @@ function StepLyrics({ project, onChange, onNext }: { project: MusicProject; onCh
     setError("");
     try {
       const scenes = await generateMusicScenes(project.lyrics, project.title, project.visualStyle);
-      onChange({ scenes, currentStep: "CHARACTERS" });
+      onChange({ scenes, currentStep: "AUDIO" });
       onNext();
     } catch (e: any) {
       setError(e.message);
@@ -65,7 +93,7 @@ function StepLyrics({ project, onChange, onNext }: { project: MusicProject; onCh
           <input
             value={project.title}
             onChange={e => onChange({ title: e.target.value })}
-            placeholder="Ex: Bohemian Rhapsody"
+            placeholder="Ex: A Arca de Noe"
             className="w-full px-4 py-3 rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
@@ -74,9 +102,40 @@ function StepLyrics({ project, onChange, onNext }: { project: MusicProject; onCh
           <input
             value={project.artist || ""}
             onChange={e => onChange({ artist: e.target.value })}
-            placeholder="Ex: Queen"
+            placeholder="Ex: Turma da Magic"
             className="w-full px-4 py-3 rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-semibold text-foreground mb-2">Estilo Musical</label>
+          <div className="flex flex-col gap-2">
+            {MUSIC_GENRES.map(g => (
+              <button
+                key={g}
+                onClick={() => onChange({ genre: g })}
+                className={`py-3 px-4 rounded-xl border-2 text-sm font-semibold text-left transition-all ${project.genre === g ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
+              >
+                {g === "Música Infantil" ? "🎈 Música Infantil" : "📖 Música Infantil Bíblica"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-foreground mb-2">Duracao</label>
+          <div className="flex flex-col gap-2">
+            {DURATION_OPTIONS.map(d => (
+              <button
+                key={d.key}
+                onClick={() => onChange({ durationTarget: d.key })}
+                className={`py-3 px-4 rounded-xl border-2 text-sm font-semibold text-left transition-all ${project.durationTarget === d.key ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -96,11 +155,21 @@ function StepLyrics({ project, onChange, onNext }: { project: MusicProject; onCh
       </div>
 
       <div>
-        <label className="block text-sm font-semibold text-foreground mb-2">Letra da Musica *</label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-semibold text-foreground">Letra da Musica *</label>
+          <button
+            onClick={handleGenerateLyrics}
+            disabled={loadingLyrics}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 disabled:opacity-50 font-semibold"
+          >
+            {loadingLyrics ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            Gerar Letra com IA
+          </button>
+        </div>
         <textarea
           value={project.lyrics}
           onChange={e => onChange({ lyrics: e.target.value })}
-          placeholder="Cole aqui a letra completa da musica..."
+          placeholder="Cole a letra aqui ou clique em 'Gerar Letra com IA'..."
           className="w-full h-72 px-4 py-3 rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
         />
       </div>
@@ -113,6 +182,70 @@ function StepLyrics({ project, onChange, onNext }: { project: MusicProject; onCh
         className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-50"
       >
         {loading ? <><Loader2 className="w-5 h-5 animate-spin" /> Gerando Cenas...</> : <><Sparkles className="w-5 h-5" /> Gerar Cenas da Musica</>}
+      </button>
+    </div>
+  );
+}
+
+function StepAudio({ project, onChange, onNext }: { project: MusicProject; onChange: (p: Partial<MusicProject>) => void; onNext: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setError("");
+    onChange({ audioStatus: "generating" });
+    try {
+      const audioUrl = await generateSongAudio(project.lyrics, project.title, project.genre, project.durationTarget);
+      onChange({ audioUrl, audioStatus: "done" });
+    } catch (e: any) {
+      setError(e.message);
+      onChange({ audioStatus: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpload = (file: File) => {
+    const url = URL.createObjectURL(file);
+    onChange({ audioUrl: url, audioStatus: "done" });
+  };
+
+  return (
+    <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Letra</p>
+        <pre className="whitespace-pre-wrap text-sm text-foreground max-h-64 overflow-y-auto font-sans">{project.lyrics}</pre>
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-6 flex flex-col items-center gap-4">
+        {project.audioUrl ? (
+          <audio controls src={project.audioUrl} className="w-full" />
+        ) : (
+          <div className="text-center text-muted-foreground py-6">
+            <Music className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p>A musica cantada sera exibida aqui</p>
+          </div>
+        )}
+
+        <button
+          onClick={handleGenerate}
+          disabled={loading}
+          className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-50"
+        >
+          {loading ? <><Loader2 className="w-5 h-5 animate-spin" /> Gerando Musica...</> : <><Sparkles className="w-5 h-5" /> {project.audioUrl ? "Regerar Musica com IA" : "Gerar Musica com IA"}</>}
+        </button>
+
+        <label className="w-full text-center text-xs text-muted-foreground hover:text-foreground cursor-pointer underline underline-offset-2">
+          Ou envie um arquivo de audio pronto
+          <input type="file" accept="audio/*" className="hidden" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])} />
+        </label>
+      </div>
+
+      {error && <p className="text-destructive text-sm">{error}</p>}
+
+      <button onClick={onNext} disabled={!project.audioUrl} className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-50">
+        Continuar para Personagens <ChevronRight className="w-5 h-5" />
       </button>
     </div>
   );
@@ -560,6 +693,7 @@ export function MusicClipPage() {
       {/* Step Content */}
       <motion.div key={currentStep.key} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
         {currentStep.key === "LYRICS" && <StepLyrics project={project} onChange={handleChange} onNext={goNext} />}
+        {currentStep.key === "AUDIO" && <StepAudio project={project} onChange={handleChange} onNext={goNext} />}
         {currentStep.key === "CHARACTERS" && <StepCharacters project={project} onChange={handleChange} onNext={goNext} />}
         {currentStep.key === "COVER" && <StepCover project={project} onChange={handleChange} onNext={goNext} />}
         {currentStep.key === "IMAGES" && <StepImages project={project} onChange={handleChange} onNext={goNext} />}

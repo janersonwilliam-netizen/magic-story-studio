@@ -3,7 +3,7 @@
  * Uses Vertex AI (via /api/generate-text and /api/generate-image) for all generation
  */
 
-import { MusicScene, MusicCharacter } from '../types/music';
+import { MusicScene, MusicCharacter, MusicGenre, MusicDurationTarget } from '../types/music';
 import { VisualStyle } from '../types/studio';
 
 // ── Helper: call Vertex Text API ──────────────────────────────────────────────
@@ -51,6 +51,44 @@ function parseJsonFromResponse(text: string): any {
         console.error("Texto bruto completo do Gemini:", text);
         throw new Error(`Erro na formatação JSON do Gemini: ${e.message}`);
     }
+}
+
+// ── 0. Generate Song Lyrics from Title + Genre + Duration ────────────────────
+
+const DURATION_HINTS: Record<MusicDurationTarget, string> = {
+    curta: 'CURTA (~1 minuto): 1 verso + refrão, repita o refrão 1 vez no final.',
+    media: 'MÉDIA (~2 minutos): 2 versos + refrão, repita o refrão entre e depois dos versos.',
+    longa: 'LONGA (~3 minutos): 3 a 4 versos + refrão + uma ponte (bridge), repetindo o refrão várias vezes.',
+};
+
+const GENRE_HINTS: Record<MusicGenre, string> = {
+    'Música Infantil': 'Tema lúdico e alegre para crianças (brincadeiras, natureza, amizade, imaginação). Vocabulário simples, refrão repetitivo e fácil de cantar junto.',
+    'Música Infantil Bíblica': 'Tema e moral bíblicos apropriados para crianças (histórias, valores, louvor), linguagem simples e reverente, refrão memorável e fácil de cantar junto.',
+};
+
+export async function generateSongLyrics(
+    title: string,
+    genre: MusicGenre,
+    durationTarget: MusicDurationTarget
+): Promise<string> {
+    console.log('[MusicClip] Generating song lyrics...');
+
+    const prompt = `Você é um compositor profissional de músicas para um canal infantil no YouTube. Escreva a letra completa de uma música em PORTUGUÊS a partir do título abaixo.
+
+TÍTULO: "${title}"
+ESTILO/GÊNERO: ${genre} — ${GENRE_HINTS[genre]}
+DURAÇÃO ALVO: ${DURATION_HINTS[durationTarget]}
+
+REGRAS:
+1. Escreva a letra estruturada em seções claramente marcadas, cada uma em sua própria linha, exatamente no formato: [Verso 1], [Refrão], [Verso 2], [Ponte] etc.
+2. O refrão deve se repetir com o texto EXATAMENTE igual toda vez que aparecer.
+3. Frases curtas, rimas simples, cadência fácil de cantar.
+4. Não inclua nenhuma explicação, apenas a letra.
+
+Retorne SOMENTE a letra da música, já formatada com os marcadores de seção.`;
+
+    const lyrics = await callVertexText(prompt, { temperature: 0.85, maxOutputTokens: 2048 });
+    return lyrics.trim();
 }
 
 // ── 1. Generate Music Scenes from Lyrics ─────────────────────────────────────

@@ -42,15 +42,23 @@ export interface MusicCharacter {
     referenceImageUrl?: string; // Generated character reference image
 }
 
+// ── Music Genre (style of the song, independent from the visual art style) ──
+
+export type MusicGenre = 'Música Infantil' | 'Música Infantil Bíblica';
+
+export type MusicDurationTarget = 'curta' | 'media' | 'longa';
+
 // ── Music Project (persistent) ───────────────────────────────────────────────
 
-export type MusicStep = 'LYRICS' | 'CHARACTERS' | 'COVER' | 'IMAGES' | 'VIDEOS';
+export type MusicStep = 'LYRICS' | 'AUDIO' | 'CHARACTERS' | 'COVER' | 'IMAGES' | 'VIDEOS';
 
 export interface MusicProject {
     id: string;
     title: string;             // Song title
     artist?: string;           // Optional artist name
     lyrics: string;            // Full song lyrics
+    genre: MusicGenre;         // Musical style/genre used to write the lyrics and sing the song
+    durationTarget: MusicDurationTarget; // Target song length
     visualStyle: VisualStyle;
 
     // Workflow
@@ -58,6 +66,10 @@ export interface MusicProject {
     scenes: MusicScene[];
     characters: MusicCharacter[];
     coverUrl?: string;
+
+    // Generated singing audio (Lyria)
+    audioUrl?: string;
+    audioStatus?: GenerationStatus;
 
     // Timestamps
     createdAt: number;
