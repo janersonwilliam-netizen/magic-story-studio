@@ -7,6 +7,7 @@
  */
 
 import { getVertexToken } from '../_shared/vertexAuth';
+import { resolveReferenceImages } from '../_shared/referenceImages';
 
 interface Env {
   GCP_PROJECT_ID: string;
@@ -53,16 +54,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (hasRefs) {
       console.log(`[generate-image] Gerando com ${referenceImages.length} referências via Gemini (${model})`);
 
-      // Montar parts: prompt + imagens de referência
-      const parts: any[] = [{ text: prompt }];
-      for (const refImage of referenceImages) {
-        const match = refImage.match(/^data:(image\/\w+);base64,(.+)$/);
-        if (match) {
-          parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
-        } else if (refImage.length > 100) {
-          parts.push({ inlineData: { mimeType: 'image/png', data: refImage } });
-        }
+      // Montar parts: prompt + imagens de referência. As referências podem chegar
+      // como data URL, URL do R2 (/api/image/...) ou URL do Supabase — todas são
+      // resolvidas para base64 aqui; antes, URLs eram perdidas e o personagem
+      // saía sem consistência.
+      const origin = new URL(request.url).origin;
+      const { parts: refParts, dropped } = await resolveReferenceImages(
+        referenceImages, env.IMAGES_BUCKET, origin
+      );
+      console.log(`[generate-image] Referências resolvidas: ${refParts.length}/${referenceImages.length}`);
+
+      if (refParts.length === 0) {
+        return Response.json(
+          { error: `Nenhuma das ${referenceImages.length} imagens de referência pôde ser resolvida (formato inválido ou imagem inacessível)` },
+          { status: 400 }
+        );
       }
+      if (dropped > 0) {
+        console.warn(`[generate-image] ${dropped} referência(s) descartada(s) por formato inválido/imagem inacessível`);
+      }
+
+      const parts: any[] = [{ text: prompt }, ...refParts];
 
       const payload = {
         contents: [{ role: 'user', parts }],
