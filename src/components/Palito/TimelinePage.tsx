@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { toBlobURL } from '@ffmpeg/util';
 import { Play, Pause, ArrowLeft, ArrowRight, Film, Download, Loader2, CheckCircle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { PalitoSceneLine, PalitoTranscriptionLine, PalitoFormat } from '../../types/palito';
 
@@ -342,10 +343,11 @@ export function TimelinePage({ audioUrl, scenes, transcription, format = 'VIDEO'
         const timeout = new Promise<never>((_, rej) =>
             setTimeout(() => rej(new Error('ff.load() travou por mais de 30s. Veja o console para detalhes.')), 30000)
         );
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
         await Promise.race([
             ff.load({
-                coreURL: `${location.origin}/ffmpeg-core.js`,
-                wasmURL: `${location.origin}/ffmpeg-core.wasm`,
+                coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
             }),
             timeout,
         ]);
