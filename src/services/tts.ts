@@ -80,6 +80,7 @@ export type GoogleVoiceOption = keyof typeof GOOGLE_VOICES;
 
 
 import { generateGoogleCloudAudio } from './google_tts';
+import { trimTrailingSilence, pcmDurationSeconds, minPlausibleSpeechSeconds } from './ttsAudioUtils';
 let googleBillingUnavailable = false;
 
 /**
@@ -121,6 +122,15 @@ export async function generateAudioNarration(params: GenerateAudioParams): Promi
     const isGemini = Object.keys(GEMINI_VOICES).includes(voiceName);
 
     if (isGemini || googleBillingUnavailable) {
+        // Portão de tamanho: acima do limite de chunk o Gemini TTS NÃO retorna erro —
+        // ele fala só parte do texto e preenche o resto com áudio quase mudo até o
+        // limite de tokens (~10 min de "silêncio"). Fragmenta PROATIVAMENTE em vez
+        // de esperar um erro de tamanho que nunca vem.
+        const chunkLimit = params.maxChunkChars ?? MAX_TTS_CHUNK_CHARS;
+        if (sanitizeTtsTranscript(text).length > chunkLimit) {
+            console.log(`[TTS] Texto (${text.length} chars) acima do limite de ${chunkLimit} — gerando em blocos.`);
+            return generateLongAudioNarration(params);
+        }
         try {
             return await generateSingleGeminiAudioNarration(params);
         } catch (error: any) {
@@ -175,7 +185,8 @@ function isLikelyTtsLengthLimit(message: string): boolean {
         || m.includes('limit')
         || m.includes('quota')
         || m.includes('tokens')
-        || m.includes('input size');
+        || m.includes('input size')
+        || m.includes('truncad'); // truncado/truncated — fala curta demais para o texto (degradação silenciosa)
 }
 
 function mapGoogleVoiceToGemini(googleVoiceName: string): GeminiVoiceOption {
@@ -259,7 +270,24 @@ async function generateSingleGeminiAudioNarration(params: GenerateAudioParams): 
     if (!base64) return dataUrl;
 
     const wavBytes = base64ToUint8Array(base64);
-    const pcmRaw = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
+    const pcmFull = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
+
+    // O Gemini TTS, ao degradar, para de falar e preenche o resto com áudio quase
+    // mudo. Corta essa cauda; se a fala restante for implausivelmente curta para o
+    // texto, trata como truncamento (o chamador cai na geração em blocos).
+    const pcmRaw = trimTrailingSilence(pcmFull);
+    const speechSeconds = pcmDurationSeconds(pcmRaw);
+    if (speechSeconds < minPlausibleSpeechSeconds(params.text)) {
+        throw new Error(
+            `TTS truncado pelo provedor: apenas ${Math.round(speechSeconds)}s de fala para ${countWords(params.text)} palavras`
+        );
+    }
+    if (pcmRaw.byteLength < pcmFull.byteLength) {
+        console.log(
+            `[Gemini TTS] Cauda de silêncio cortada: ${Math.round(pcmDurationSeconds(pcmFull))}s → ${Math.round(speechSeconds)}s`
+        );
+    }
+
     const before = measurePcmLoudness(pcmRaw);
     const slowLeveled = levelLoudnessSlow(pcmRaw, 24000);
     const leveledPcm = normalizeFinalPeak(slowLeveled);
@@ -374,6 +402,12 @@ function base64ToUint8Array(base64: string): Uint8Array {
     const out = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
     return out;
+}
+
+/** Extrai o PCM16 cru de um data URL de WAV (remove prefixo base64 e header de 44 bytes). */
+function decodeWavDataUrlToPcm(dataUrl: string): Uint8Array {
+    const wavBytes = base64ToUint8Array(dataUrl.split(',')[1] || '');
+    return wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
 }
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
@@ -831,13 +865,25 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
         });
 
         // Extract base64 data (remove "data:audio/wav;base64," prefix)
-        const base64 = dataUrl.split(',')[1];
-        const wavBytes = base64ToUint8Array(base64);
-        
-        // Slices off the 44-byte WAV header, leaving raw PCM
-        const chunkPcmRaw = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
+        const chunkPcmRaw = decodeWavDataUrlToPcm(dataUrl);
 
-        const chunkPcm = chunkPcmRaw;
+        // Corta a cauda quase muda do bloco; se a fala restante for curta demais
+        // para o texto do bloco (degradação silenciosa do Gemini), tenta 1x de
+        // novo e fica com a tentativa que tem mais fala.
+        let chunkPcm = trimTrailingSilence(chunkPcmRaw);
+        if (pcmDurationSeconds(chunkPcm) < minPlausibleSpeechSeconds(chunks[i])) {
+            console.warn(
+                `[Gemini TTS] Bloco ${i + 1}/${chunks.length} veio truncado/mudo ` +
+                `(${Math.round(pcmDurationSeconds(chunkPcm))}s para ${countWords(chunks[i])} palavras) — regenerando 1x`
+            );
+            const retryUrl = await generateGeminiAudio({
+                ...params,
+                text: chunks[i],
+                targetDurationMinutes: undefined
+            });
+            const retryPcm = trimTrailingSilence(decodeWavDataUrlToPcm(retryUrl));
+            if (retryPcm.byteLength > chunkPcm.byteLength) chunkPcm = retryPcm;
+        }
         pcmBuffers.push(chunkPcm);
 
         // DIAGNOSTIC: log this chunk's loudness (antes → depois da normalização)
