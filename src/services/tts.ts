@@ -82,6 +82,7 @@ export type GoogleVoiceOption = keyof typeof GOOGLE_VOICES;
 
 
 import { generateGoogleCloudAudio } from './google_tts';
+import { normalizePitchAcrossChunks } from './ttsPitch';
 import { trimTrailingSilence, pcmDurationSeconds, minPlausibleSpeechSeconds } from './ttsAudioUtils';
 let googleBillingUnavailable = false;
 
@@ -855,7 +856,8 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
     const chunks = splitTextIntoChunks(params.text, chunkSize); // smaller chunks stay under the drift threshold (docs) → no whispering mid-passage
     console.log(`[Gemini TTS] Text too long (${params.text.length} chars), split into ${chunks.length} chunks`);
 
-    const pcmBuffers: Uint8Array[] = [];
+    // 1ª passada: gera e limpa cada bloco (mantém o áudio CRU de volume/tom).
+    const trimmedChunks: Uint8Array[] = [];
     const totalWords = countWords(params.text);
 
     for (let i = 0; i < chunks.length; i++) {
@@ -907,24 +909,28 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
             if (retryPcm.byteLength > chunkPcm.byteLength) chunkPcm = retryPcm;
         }
 
-        // Normaliza CADA bloco ao MESMO volume-alvo ANTES de concatenar. Sem isto,
-        // o Gemini gera cada bloco (chamada independente) num nível diferente
-        // (medido: -14 vs -18 dBFS entre blocos), o nivelador final achata tudo
-        // para baixo e o resultado sai ~2 dB abaixo do padrão de passada única
-        // (Palito) — soando como cochicho. Com a normalização por bloco, o áudio
-        // encadeado nasce no mesmo nível da passada única (~-19,6 dBFS).
-        const chunkNormalized = normalizeChunkRms(chunkPcm, TARGET_RMS);
-        pcmBuffers.push(chunkNormalized);
-
-        // DIAGNOSTIC: log this chunk's loudness (antes → depois da normalização)
-        // para localizar qualquer sussurro/queda de volume.
-        const mRaw = measurePcmLoudness(chunkPcm);
-        const m = measurePcmLoudness(chunkNormalized);
-        console.log(
-            `[Gemini TTS][DIAG] chunk ${i + 1}/${chunks.length} | ${chunks[i].length} chars | ${m.seconds}s | ` +
-            `RMS ${mRaw.rmsDb} → ${m.rmsDb} dBFS | peak ${m.peakDb} dBFS | quartis(RMS dBFS): ${m.quartersDb.join(' → ')}`
-        );
+        trimmedChunks.push(chunkPcm);
     }
+
+    // 2ª passada — IGUALA O TOM entre blocos. Cada bloco é uma geração stateless
+    // e escolhe um registro de tom (F0) diferente (medido: 188–207 Hz para a
+    // MESMA voz) — na emenda isso soa como "a voz mudou". A temperatura NÃO
+    // controla isso (testado: baixar piora). Aqui medimos o F0 de cada bloco e
+    // reamostramos todos para a mediana comum, igualando o tom sem artefato.
+    const pitch = normalizePitchAcrossChunks(trimmedChunks, 24000);
+    console.log(`[Gemini TTS][DIAG] TOM | F0 antes: ${pitch.before.join(' → ')} Hz | alvo: ${pitch.targetF0} Hz | F0 depois: ${pitch.after.join(' → ')} Hz`);
+
+    // 3ª passada — IGUALA O VOLUME de cada bloco ao mesmo alvo ANTES de concatenar
+    // (senão o nivelador final achata tudo para baixo e soa cochichado).
+    const pcmBuffers: Uint8Array[] = pitch.chunks.map((chunk, i) => {
+        const normalized = normalizeChunkRms(chunk, TARGET_RMS);
+        const m = measurePcmLoudness(normalized);
+        console.log(
+            `[Gemini TTS][DIAG] chunk ${i + 1}/${chunks.length} | ${m.seconds}s | ` +
+            `RMS ${m.rmsDb} dBFS | peak ${m.peakDb} dBFS | quartis(RMS dBFS): ${m.quartersDb.join(' → ')}`
+        );
+        return normalized;
+    });
 
     // Concatena os blocos com um crossfade curto na emenda (em vez de corte seco),
     // suavizando a troca de voz entre blocos (cada bloco é uma geração stateless
