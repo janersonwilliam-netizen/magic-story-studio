@@ -229,11 +229,13 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
             // Flash por padrão: ~3x mais barato e mais rápido que o Pro — em produção
             // a requisição precisa terminar antes dos ~100s do proxy do Cloudflare.
             model: params.ttsModel ?? 'flash',
-            // Temperatura BAIXA para leitura fiel: o Gemini TTS é generativo e, no
-            // padrão (1.0), pode parafrasear/improvisar palavras — o áudio sai
-            // diferente do texto exibido. 0.7 reduz a improvisação sem deixar a
-            // narração robótica.
-            temperature: params.temperature ?? 0.7
+            // Temperatura BAIXA para leitura fiel ao roteiro. O Gemini TTS é
+            // generativo: quanto mais alta a temperatura, mais ele AMOSTRA e
+            // ocasionalmente troca/pula/repete palavras (o "às vezes sai diferente
+            // da narração"). 0.25 mantém a leitura praticamente determinística —
+            // colada no texto — sem deixar a voz robótica (o timbre/prosódia vem do
+            // modelo de voz + prompt de estilo, não da temperatura).
+            temperature: params.temperature ?? 0.25
         })
     });
 

@@ -146,9 +146,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     // Temperatura baixa por padrão: o TTS é generativo e com temperatura alta
     // pode falar um texto diferente do transcript (parafrasear/improvisar).
+    // 0.25 mantém a leitura colada ao roteiro; o frontend já envia esse valor,
+    // este default só cobre chamadas diretas à API.
     const safeTemperature = typeof temperature === 'number' && temperature >= 0 && temperature <= 2
       ? temperature
-      : 0.7;
+      : 0.25;
 
     const payload = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
