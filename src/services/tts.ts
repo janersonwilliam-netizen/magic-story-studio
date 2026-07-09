@@ -904,12 +904,20 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
             const retryPcm = trimTrailingSilence(decodeWavDataUrlToPcm(retryUrl));
             if (retryPcm.byteLength > chunkPcm.byteLength) chunkPcm = retryPcm;
         }
-        pcmBuffers.push(chunkPcm);
+
+        // Normaliza CADA bloco ao MESMO volume-alvo ANTES de concatenar. Sem isto,
+        // o Gemini gera cada bloco (chamada independente) num nível diferente
+        // (medido: -14 vs -18 dBFS entre blocos), o nivelador final achata tudo
+        // para baixo e o resultado sai ~2 dB abaixo do padrão de passada única
+        // (Palito) — soando como cochicho. Com a normalização por bloco, o áudio
+        // encadeado nasce no mesmo nível da passada única (~-19,6 dBFS).
+        const chunkNormalized = normalizeChunkRms(chunkPcm, TARGET_RMS);
+        pcmBuffers.push(chunkNormalized);
 
         // DIAGNOSTIC: log this chunk's loudness (antes → depois da normalização)
         // para localizar qualquer sussurro/queda de volume.
-        const mRaw = measurePcmLoudness(chunkPcmRaw);
-        const m = measurePcmLoudness(chunkPcm);
+        const mRaw = measurePcmLoudness(chunkPcm);
+        const m = measurePcmLoudness(chunkNormalized);
         console.log(
             `[Gemini TTS][DIAG] chunk ${i + 1}/${chunks.length} | ${chunks[i].length} chars | ${m.seconds}s | ` +
             `RMS ${mRaw.rmsDb} → ${m.rmsDb} dBFS | peak ${m.peakDb} dBFS | quartis(RMS dBFS): ${m.quartersDb.join(' → ')}`
