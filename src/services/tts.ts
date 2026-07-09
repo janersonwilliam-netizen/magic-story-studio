@@ -227,9 +227,13 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
             text: safeText,
             voice: voiceName,
             styleInstruction,
-            // Flash por padrão: ~3x mais barato e mais rápido que o Pro — em produção
-            // a requisição precisa terminar antes dos ~100s do proxy do Cloudflare.
-            model: params.ttsModel ?? 'flash',
+            // Pro por padrão: era o que rodava antes (voz mais consistente e de
+            // caráter que o usuário já conhecia). O Flash, testado como padrão,
+            // renderiza a MESMA voz num tom bem diferente (ex.: Kore ~189 Hz no
+            // Flash vs ~240 Hz no Pro) — soa como "trocou a voz". Medido: Pro em
+            // bloco de 1500 chars leva ~65s, dentro dos ~100s do proxy do
+            // Cloudflare, então não reintroduz o erro 524.
+            model: params.ttsModel ?? 'pro',
             // Temperatura BAIXA para leitura fiel ao roteiro. O Gemini TTS é
             // generativo: quanto mais alta a temperatura, mais ele AMOSTRA e
             // ocasionalmente troca/pula/repete palavras (o "às vezes sai diferente
