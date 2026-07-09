@@ -13,8 +13,12 @@ interface Env {
   GCP_REGION_TTS: string;
 }
 
-// Modelos TTS disponíveis (em ordem de preferência)
-const TTS_MODELS = ['gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'] as const;
+// Modelos TTS disponíveis. A ordem de tentativa depende do modelo pedido pelo
+// frontend ('flash' | 'pro'). Flash é o padrão: ~3x mais barato e bem mais
+// rápido — essencial em produção, onde o proxy do Cloudflare corta requisições
+// que passam de ~100s (erro 524).
+const FLASH_FIRST = ['gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'] as const;
+const PRO_FIRST = ['gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'] as const;
 
 /**
  * Detecta se GCP_CREDENTIALS_JSON tem credenciais válidas (Service Account ou Authorized User)
@@ -90,13 +94,14 @@ function wavToBase64(wavBytes: Uint8Array): string {
  */
 async function generateViaVertexAI(
   payload: object,
-  env: Env
+  env: Env,
+  models: readonly string[]
 ): Promise<string | null> {
   const token = await getVertexToken(env as any);
   const projectId = env.GCP_PROJECT_ID;
   const region = env.GCP_REGION_TTS || 'us-central1';
 
-  for (const model of TTS_MODELS) {
+  for (const model of models) {
     const host = region === 'global' ? 'aiplatform.googleapis.com' : `${region}-aiplatform.googleapis.com`;
     const url = `https://${host}/v1beta1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
     console.log(`[generate-narration] Vertex AI — tentando modelo: ${model}`);
@@ -129,7 +134,7 @@ async function generateViaVertexAI(
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { text, voice, styleInstruction, temperature } = (await request.json()) as any;
+    const { text, voice, styleInstruction, temperature, model } = (await request.json()) as any;
 
     if (!text) {
       return Response.json({ error: 'O campo "text" é obrigatório' }, { status: 400 });
@@ -164,8 +169,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'GCP_CREDENTIALS_JSON ou GCP_PROJECT_ID não configurados corretamente.' }, { status: 500 });
     }
 
-    console.log('[generate-narration] Usando Vertex AI (sem fallback para AI Studio)');
-    const audioBase64 = await generateViaVertexAI(payload, env);
+    const models = model === 'pro' ? PRO_FIRST : FLASH_FIRST;
+    console.log(`[generate-narration] Usando Vertex AI, preferência: ${model === 'pro' ? 'pro' : 'flash'}`);
+    const audioBase64 = await generateViaVertexAI(payload, env, models);
 
     if (!audioBase64) {
       return Response.json({ error: 'Todos os modelos TTS falharam no Vertex AI. Verifique as cotas e permissões no GCP.' }, { status: 500 });

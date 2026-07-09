@@ -18,6 +18,8 @@ export interface GenerateAudioParams {
     /** Se true, NÃO aplica normalização RMS por bloco nem o nivelador de volume —
      *  retorna o áudio CRU do Gemini. Só p/ a página de teste comparar cru vs nivelado. */
     disableLeveling?: boolean;
+    /** Modelo TTS: 'flash' (padrão — rápido/barato) ou 'pro'. Espelha o seletor da UI. */
+    ttsModel?: 'flash' | 'pro';
 }
 
 export type TTSProvider = 'gemini' | 'google-cloud';
@@ -86,17 +88,16 @@ let googleBillingUnavailable = false;
 /**
  * Max characters sent to Gemini TTS in a SINGLE generation.
  *
- * IMPORTANTE (2026-06-15): subiu de 1500 → 4000. Antes era pequeno para conter a
- * DERIVA DE VOLUME do modelo em trechos longos — mas isso trocava um problema por
- * outro: cada bloco é uma chamada `generateContent` independente e STATELESS, e o
- * modelo escolhe um TIMBRE ligeiramente diferente a cada chamada → "a voz muda do
- * meio para o fim e depois volta". Agora que o nivelador de volume
- * (`levelLoudnessSlow`) corrige a deriva de volume de forma robusta, podemos usar
- * blocos GRANDES: quanto menos blocos, menos trocas de voz. Com ≤4000 chars
- * (~5 min) a história inteira costuma caber em UMA chamada = UMA voz só. Acima
- * disso, fragmenta no MENOR número de blocos (grandes), com crossfade na emenda.
+ * IMPORTANTE (2026-07-08): desceu de 4000 → 1500 por causa do limite de 100s do
+ * proxy do Cloudflare em produção (erro 524). Medições no Vertex:
+ *   - 2000 chars ≈ 140s de áudio ≈ 71s de geração (flash) / 96s (pro) → estoura
+ *     ou tangencia os 100s;
+ *   - 1500 chars ≈ ~105s de áudio ≈ ~50s (flash) / ~70s (pro) → folga segura.
+ * Blocos maiores também disparavam a DEGRADAÇÃO SILENCIOSA do modelo (fala parte
+ * do texto e preenche o resto com áudio mudo). O custo de mais emendas é
+ * mitigado pelo crossfade + nivelador de volume (`levelLoudnessSlow`).
  */
-const MAX_TTS_CHUNK_CHARS = 4000;
+const MAX_TTS_CHUNK_CHARS = 1500;
 
 /**
  * Volume médio (RMS) alvo, em escala linear (0..1). ~0,12 ≈ -18 dBFS.
@@ -186,7 +187,10 @@ function isLikelyTtsLengthLimit(message: string): boolean {
         || m.includes('quota')
         || m.includes('tokens')
         || m.includes('input size')
-        || m.includes('truncad'); // truncado/truncated — fala curta demais para o texto (degradação silenciosa)
+        || m.includes('truncad') // truncado/truncated — fala curta demais para o texto (degradação silenciosa)
+        || m.includes('524')     // Cloudflare cortou a requisição em ~100s — texto grande demais para uma chamada
+        || m.includes('timeout')
+        || m.includes('timed out');
 }
 
 function mapGoogleVoiceToGemini(googleVoiceName: string): GeminiVoiceOption {
@@ -222,6 +226,9 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
             text: safeText,
             voice: voiceName,
             styleInstruction,
+            // Flash por padrão: ~3x mais barato e mais rápido que o Pro — em produção
+            // a requisição precisa terminar antes dos ~100s do proxy do Cloudflare.
+            model: params.ttsModel ?? 'flash',
             // Temperatura BAIXA para leitura fiel: o Gemini TTS é generativo e, no
             // padrão (1.0), pode parafrasear/improvisar palavras — o áudio sai
             // diferente do texto exibido. 0.7 reduz a improvisação sem deixar a
@@ -858,11 +865,24 @@ export async function generateLongAudioNarration(params: GenerateAudioParams): P
 
         // Generate audio for each chunk using Gemini directly
         // NOTE: Do NOT pass a per-chunk duration target — it causes volume/speed inconsistency
-        const dataUrl = await generateGeminiAudio({
-            ...params,
-            text: chunks[i],
-            targetDurationMinutes: undefined  // Keep same rate across all chunks
-        });
+        let dataUrl: string;
+        try {
+            dataUrl = await generateGeminiAudio({
+                ...params,
+                text: chunks[i],
+                targetDurationMinutes: undefined  // Keep same rate across all chunks
+            });
+        } catch (err: any) {
+            // Falha pontual (ex.: 524/timeout do proxy, oscilação do Vertex): uma
+            // nova tentativa salva a narração inteira em vez de perder tudo.
+            console.warn(`[Gemini TTS] Bloco ${i + 1}/${chunks.length} falhou (${err?.message}) — tentando 1x de novo`);
+            await new Promise(r => setTimeout(r, 3000));
+            dataUrl = await generateGeminiAudio({
+                ...params,
+                text: chunks[i],
+                targetDurationMinutes: undefined
+            });
+        }
 
         // Extract base64 data (remove "data:audio/wav;base64," prefix)
         const chunkPcmRaw = decodeWavDataUrlToPcm(dataUrl);
