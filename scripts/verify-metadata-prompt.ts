@@ -6,7 +6,7 @@
  *
  * Rodar: npx tsx scripts/verify-metadata-prompt.ts
  */
-import { buildStoryMetadataPrompt } from '../src/services/gemini';
+import { buildStoryMetadataPrompt, trimTagsToCharBudget } from '../src/services/gemini';
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -56,6 +56,37 @@ check('trecho do roteiro aparece verbatim', classica.includes('Era uma vez um co
 console.log('6) contrato de saída JSON não foi quebrado');
 check('ainda pede o mesmo shape de JSON',
     classica.includes('{"viralTitle": "...", "description": "...", "tags": ["tag1", "tag2", ...], "pinnedComment": "..."}'));
+
+console.log('7) trimTagsToCharBudget corta do fim até caber no orçamento de caracteres');
+{
+    const manyTags = Array.from({ length: 30 }, (_, i) => `palavra-chave numero ${i} bem longa e especifica`);
+    const joinedBefore = manyTags.join(', ').length;
+    check('reproduz o cenário do incidente: lista original excede 500 chars', joinedBefore > 500, `tamanho original: ${joinedBefore}`);
+
+    const trimmed = trimTagsToCharBudget(manyTags, 500);
+    check('resultado fica dentro do orçamento', trimmed.join(', ').length <= 500, `tamanho após corte: ${trimmed.join(', ').length}`);
+    check('não adicionou tags', trimmed.length <= manyTags.length);
+    check('manteve pelo menos 1 tag', trimmed.length >= 1);
+
+    const isPrefix = trimmed.every((tag, i) => tag === manyTags[i]);
+    check('preservou a ORDEM/PRIORIDADE original (cortou só do fim)', isPrefix,
+        `trimmed: ${JSON.stringify(trimmed)}`);
+}
+
+console.log('8) trimTagsToCharBudget não mexe em listas já dentro do orçamento');
+{
+    const shortTags = ['coelhinho corajoso', 'historia infantil', 'contos para crianças'];
+    const result = trimTagsToCharBudget(shortTags, 500);
+    check('lista curta sai inalterada', JSON.stringify(result) === JSON.stringify(shortTags));
+}
+
+console.log('9) trimTagsToCharBudget nunca esvazia a lista, mesmo com 1 tag gigante');
+{
+    const oneHugeTag = ['x'.repeat(600)];
+    const result = trimTagsToCharBudget(oneHugeTag, 500);
+    check('mantém a única tag mesmo excedendo o limite sozinha', result.length === 1);
+    check('não trunca o TEXTO da tag (só corta tags inteiras, nunca no meio de uma)', result[0].length === 600);
+}
 
 console.log(failures === 0 ? '\nTODOS OS TESTES PASSARAM' : `\n${failures} FALHA(S)`);
 process.exit(failures === 0 ? 0 : 1);

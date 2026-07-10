@@ -172,6 +172,23 @@ export interface StoryMetadataResult {
     pinnedComment: string;
 }
 
+/**
+ * Corta tags do fim da lista até a soma (separadas por ", ") ficar dentro do
+ * orçamento de caracteres. O prompt já pede 400-480 chars, mas a soma exata é
+ * uma conta que o LLM não faz de forma confiável ao gerar item por item — em
+ * teste real, um caso saiu com 32 tags somando 643 chars (29% acima do limite
+ * técnico do YouTube de 500). Cortar do FIM preserva a ordem de prioridade que
+ * o próprio prompt pede: palavra-chave primária, variações próximas e termos
+ * amplos vêm primeiro; cauda longa/faixa etária vêm por último.
+ */
+export function trimTagsToCharBudget(tags: string[], maxChars: number = 500): string[] {
+    const trimmed = [...tags];
+    while (trimmed.length > 1 && trimmed.join(', ').length > maxChars) {
+        trimmed.pop();
+    }
+    return trimmed;
+}
+
 export function buildStoryMetadataPrompt(params: GenerateStoryMetadataParams): string {
     const isBiblica = params.theme === 'biblica';
     const broadTerms = isBiblica
@@ -235,7 +252,7 @@ export async function generateStoryMetadata(params: GenerateStoryMetadataParams)
     return {
         viralTitle: parsed.viralTitle,
         description: parsed.description,
-        tags: parsed.tags,
+        tags: trimTagsToCharBudget(parsed.tags),
         pinnedComment: parsed.pinnedComment,
     };
 }
