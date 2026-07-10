@@ -172,37 +172,51 @@ export interface StoryMetadataResult {
     pinnedComment: string;
 }
 
-export async function generateStoryMetadata(params: GenerateStoryMetadataParams): Promise<StoryMetadataResult> {
+export function buildStoryMetadataPrompt(params: GenerateStoryMetadataParams): string {
     const isBiblica = params.theme === 'biblica';
     const broadTerms = isBiblica
         ? 'histórias bíblicas, historinhas para crianças, Bíblia infantil, desenho biblico'
         : 'histórias infantis, contos para crianças, desenho animado, historinha para dormir';
+    const keywordExample = isBiblica
+        ? 'Jonas historia biblica infantil'
+        : 'coelhinho historia para dormir';
 
-    const prompt = `Você é um especialista em SEO e crescimento de canais do YouTube, focado em fazer vídeos infantis viralizarem através do algoritmo (CTR do título/thumbnail + retenção + engajamento — os 3 fatores que o YouTube mais usa para recomendar um vídeo).
+    return `Você é um especialista em SEO e crescimento de canais do YouTube, focado em fazer vídeos infantis viralizarem através do algoritmo (CTR do título/thumbnail + retenção + engajamento — os 3 fatores que o YouTube mais usa para recomendar um vídeo) e em maximizar a nota de ferramentas de SEO como o vidIQ.
 
 Título da história: "${params.title}"
 Trecho do roteiro (primeiros 300 caracteres): "${params.script.substring(0, 300)}..."
 
-Gere metadados otimizados para MAXIMIZAR o desempenho no algoritmo do YouTube, seguindo exatamente estas regras:
+PASSO 1 — ESCOLHA A PALAVRA-CHAVE PRIMÁRIA (faça isso antes de escrever qualquer campo):
+Escolha UMA frase-chave primária de 2 a 4 palavras — a forma mais provável de um pai ou uma criança digitar para buscar ESTE vídeo específico (ex: "${keywordExample}"). Essa MESMA frase (ou uma variação muito próxima) deve aparecer:
+- no início do título
+- na primeira frase da descrição
+- como a primeira tag da lista
+
+Isso é o fator que mais pesa na nota de SEO (vidIQ e busca do YouTube): consistência da palavra-chave entre título, descrição e tags.
+
+Gere metadados otimizados para MAXIMIZAR o desempenho no algoritmo do YouTube e a nota de SEO, seguindo exatamente estas regras:
 
 TÍTULO (principal fator de CTR):
 - Máximo 60 caracteres (o YouTube corta o resto na busca e no celular)
-- Coloque a palavra-chave/tema principal${isBiblica ? ' (ex: o nome do personagem ou episódio bíblico)' : ' (ex: o tipo de história ou personagem central)'} logo no INÍCIO do título — o começo pesa mais para busca e recomendação
+- Comece com a palavra-chave primária escolhida no PASSO 1
 - Crie curiosidade genuína (pergunta, gancho emocional, promessa de descoberta) SEM prometer nada que a história não cumpra — título enganoso derruba a retenção e o algoritmo pune o vídeo por isso
 - Evite CAIXA ALTA constante e excesso de emojis/pontuação (!!! ???), isso é lido como spam pelo YouTube e pelos pais
 
-DESCRIÇÃO (os primeiros ~125 caracteres aparecem na busca e no feed ANTES do "mostrar mais" — é a parte que decide se a pessoa clica):
-- Primeira linha: gancho forte que já contém a palavra-chave principal, pensado para quem só vai ler essa linha
-- Depois: parágrafo de 3-4 frases resumindo a história e a lição/moral aprendida ao final
+DESCRIÇÃO (200 a 300 palavras — descrições curtas pontuam mal em ferramentas de SEO como o vidIQ):
+- Primeira frase: gancho forte que já contém a palavra-chave primária (os primeiros ~125 caracteres aparecem na busca e no feed ANTES do "mostrar mais" — é a parte que decide se a pessoa clica)
+- 2 a 3 parágrafos contando a história e a lição/moral aprendida ao final, repetindo a palavra-chave primária (ou uma variação bem próxima, ex: sinônimo ou plural) entre 2 e 4 vezes no total, de forma NATURAL — nunca empilhada/forçada a ponto de soar spam
+- Inclua também 2 a 3 termos relacionados que ampliam a busca (ex: faixa etária, formato — "desenho animado infantil", "${isBiblica ? 'história bíblica infantil' : 'historinha para dormir'}")
 - Uma pergunta simples para o espectador (ou os pais) responderem nos comentários — perguntas geram comentários, e comentários são um dos sinais mais fortes que o YouTube usa pra recomendar o vídeo
 - Linha convidando a curtir, comentar, se inscrever e ativar o sininho
-- No máximo 6 a 8 hashtags realmente relevantes ao final (o YouTube só mostra as 3 primeiras acima do título; excesso de hashtags é tratado como spam)
+- 6 a 10 hashtags relevantes ao final (o YouTube só mostra as 3 primeiras acima do título; excesso de hashtags é tratado como spam)
 
-TAGS:
-- Entre 15 e 20 tags, sem ultrapassar ~450 caracteres somados (o limite técnico do YouTube é 500)
-- A primeira tag deve ser a busca mais provável que um pai ou criança digitaria para achar ESSE vídeo específico (ela tem peso extra pro YouTube)
-- Misture termos amplos (${broadTerms}) com termos de cauda longa específicos desta história
-- Não repita a mesma tag em variações inúteis
+TAGS (25 a 35 tags, usando o máximo possível dos 500 caracteres do YouTube sem ultrapassar):
+- A primeira tag DEVE ser a palavra-chave primária exata escolhida no PASSO 1 (ela tem peso extra pro YouTube e pro vidIQ)
+- Em seguida, 2 a 3 variações próximas dessa palavra-chave
+- Misture termos amplos (${broadTerms}) com termos de cauda longa específicos desta história (frases como pais/crianças realmente buscam)
+- Inclua tags de faixa etária e formato${isBiblica ? ', e nomes dos personagens/episódio bíblico da história' : ''}
+- Some os caracteres de todas as tags (separadas por ", "): fique entre 400 e 480 caracteres — nunca ultrapasse 500
+- Não repita a mesma tag em variações inúteis (plural/singular sem ganho de busca)
 
 COMENTÁRIO FIXADO (engajamento):
 - Crie uma pergunta curta e simples para o criador fixar como primeiro comentário do vídeo, convidando pais/crianças a responder — isso gera comentários logo nas primeiras horas, o que ajuda o vídeo a "pegar tração" no algoritmo
@@ -211,7 +225,10 @@ COMENTÁRIO FIXADO (engajamento):
 
 Retorne APENAS um JSON válido:
 {"viralTitle": "...", "description": "...", "tags": ["tag1", "tag2", ...], "pinnedComment": "..."}`;
+}
 
+export async function generateStoryMetadata(params: GenerateStoryMetadataParams): Promise<StoryMetadataResult> {
+    const prompt = buildStoryMetadataPrompt(params);
     const raw = await callVertexText(prompt, { temperature: 0.7 });
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
