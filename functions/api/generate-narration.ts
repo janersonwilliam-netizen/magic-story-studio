@@ -106,7 +106,8 @@ function wavToBase64(wavBytes: Uint8Array): string {
 async function streamViaVertexAI(
   payload: object,
   env: Env,
-  models: readonly string[]
+  models: readonly string[],
+  waitUntil: (p: Promise<any>) => void
 ): Promise<Response | null> {
   const token = await getVertexToken(env as any);
   const projectId = env.GCP_PROJECT_ID;
@@ -139,11 +140,32 @@ async function streamViaVertexAI(
     const upstreamBody = upstream.body;
 
     // Bombeia o SSE do Vertex → NDJSON para o cliente, sem esperar terminar.
-    (async () => {
+    // IMPORTANTE: registrado com waitUntil — sem isso o runtime do Cloudflare
+    // pode encerrar a promise "solta" antes da última linha (o cliente recebia
+    // o áudio quase todo mas nunca o marcador {"done"}).
+    const pump = (async () => {
       const reader = upstreamBody.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let sentChunks = 0;
+
+      const processLine = async (rawLine: string) => {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) return;
+        const jsonStr = line.slice(5).trim();
+        if (!jsonStr || jsonStr === '[DONE]') return;
+        try {
+          const evt = JSON.parse(jsonStr) as any;
+          const parts = evt.candidates?.[0]?.content?.parts || [];
+          for (const part of parts) {
+            if (part.inlineData?.data) {
+              sentChunks++;
+              await writer.write(encoder.encode(JSON.stringify({ a: part.inlineData.data }) + '\n'));
+            }
+          }
+        } catch { /* linha SSE parcial/não-JSON — ignora */ }
+      };
+
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -151,23 +173,15 @@ async function streamViaVertexAI(
           buffer += decoder.decode(value, { stream: true });
           let newlineIdx;
           while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
-            const line = buffer.slice(0, newlineIdx).trim();
+            const line = buffer.slice(0, newlineIdx);
             buffer = buffer.slice(newlineIdx + 1);
-            if (!line.startsWith('data:')) continue;
-            const jsonStr = line.slice(5).trim();
-            if (!jsonStr || jsonStr === '[DONE]') continue;
-            try {
-              const evt = JSON.parse(jsonStr) as any;
-              const parts = evt.candidates?.[0]?.content?.parts || [];
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  sentChunks++;
-                  await writer.write(encoder.encode(JSON.stringify({ a: part.inlineData.data }) + '\n'));
-                }
-              }
-            } catch { /* linha SSE parcial/não-JSON — ignora */ }
+            await processLine(line);
           }
         }
+        // Flush: o último evento SSE pode terminar sem newline.
+        buffer += decoder.decode();
+        if (buffer.trim()) await processLine(buffer);
+
         if (sentChunks === 0) {
           await writer.write(encoder.encode(JSON.stringify({ error: 'Modelo não retornou áudio no stream' }) + '\n'));
         } else {
@@ -182,6 +196,7 @@ async function streamViaVertexAI(
         try { await writer.close(); } catch { /* já fechado */ }
       }
     })();
+    waitUntil(pump);
 
     return new Response(readable, {
       headers: {
@@ -237,7 +252,7 @@ async function generateViaVertexAI(
   return null;
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   try {
     const { text, voice, styleInstruction, temperature, model, stream } = (await request.json()) as any;
 
@@ -283,7 +298,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // do proxy do Cloudflare (524) deixa de se aplicar, permitindo gerar a
     // história INTEIRA numa única chamada (uma geração = uma voz).
     if (stream === true) {
-      const streamResponse = await streamViaVertexAI(payload, env, models);
+      const streamResponse = await streamViaVertexAI(payload, env, models, waitUntil);
       if (streamResponse) return streamResponse;
       return Response.json({ error: 'Todos os modelos TTS falharam no Vertex AI (streaming). Verifique cotas e permissões no GCP.' }, { status: 500 });
     }

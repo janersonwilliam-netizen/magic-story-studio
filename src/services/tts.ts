@@ -192,8 +192,9 @@ function isLikelyTtsLengthLimit(message: string): boolean {
         || m.includes('quota')
         || m.includes('tokens')
         || m.includes('input size')
-        || m.includes('truncad') // truncado/truncated — fala curta demais para o texto (degradação silenciosa)
-        || m.includes('524')     // Cloudflare cortou a requisição em ~100s — texto grande demais para uma chamada
+        || m.includes('truncad')    // truncado/truncated — fala curta demais para o texto (degradação silenciosa)
+        || m.includes('incompleto') // stream NDJSON terminou sem o marcador done
+        || m.includes('524')        // Cloudflare cortou a requisição em ~100s — texto grande demais para uma chamada
         || m.includes('timeout')
         || m.includes('timed out');
 }
@@ -328,9 +329,16 @@ function sanitizeTtsTranscript(text: string): string {
 }
 
 async function generateSingleGeminiAudioNarration(params: GenerateAudioParams): Promise<string> {
-    const dataUrl = await generateGeminiAudio({
-        ...params,
-    });
+    let dataUrl: string;
+    try {
+        dataUrl = await generateGeminiAudio({ ...params });
+    } catch (err: any) {
+        // Stream cortado no meio (rede/proxy): tenta a passada única de novo antes
+        // de desistir dela — cair direto nos blocos reintroduziria emendas de voz.
+        if (!String(err?.message || '').toLowerCase().includes('incompleto')) throw err;
+        console.warn('[Gemini TTS] Stream incompleto na passada única — tentando 1x de novo');
+        dataUrl = await generateGeminiAudio({ ...params });
+    }
 
     if (params.disableLeveling) return dataUrl;
 
