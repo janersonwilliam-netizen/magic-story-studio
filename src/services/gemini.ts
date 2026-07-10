@@ -179,12 +179,20 @@ export interface StoryMetadataResult {
  * teste real, um caso saiu com 32 tags somando 643 chars (29% acima do limite
  * técnico do YouTube de 500). Cortar do FIM preserva a ordem de prioridade que
  * o próprio prompt pede: palavra-chave primária, variações próximas e termos
- * amplos vêm primeiro; cauda longa/faixa etária vêm por último.
+ * amplos vêm primeiro; cauda longa/faixa etária vêm por último. Se restar
+ * apenas 1 tag e ela sozinha ultrapassar o orçamento, o texto dela é truncado
+ * — a garantia de "nunca excede maxChars" vale para qualquer entrada.
  */
 export function trimTagsToCharBudget(tags: string[], maxChars: number = 500): string[] {
     const trimmed = [...tags];
     while (trimmed.length > 1 && trimmed.join(', ').length > maxChars) {
         trimmed.pop();
+    }
+    // Caso degenerado: mesmo com 1 única tag sobrando, ela pode ultrapassar o
+    // orçamento sozinha. Trunca o texto para que a garantia "nunca excede
+    // maxChars" valha para QUALQUER entrada, sem exceção.
+    if (trimmed.length === 1 && trimmed[0].length > maxChars) {
+        trimmed[0] = trimmed[0].slice(0, maxChars);
     }
     return trimmed;
 }

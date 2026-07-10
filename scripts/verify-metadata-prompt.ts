@@ -41,7 +41,7 @@ check('pede repetição da keyword 2 a 4 vezes', classica.includes('entre 2 e 4 
 console.log('3) alvo de tags (25 a 35, orçamento de caracteres)');
 check('cita 25 a 35 tags', classica.includes('25 a 35 tags'));
 check('cita orçamento 400 a 480 caracteres', classica.includes('400 e 480 caracteres'));
-check('cita o limite técnico de 500', classica.includes('500'));
+check('cita o limite técnico de 500', classica.includes('nunca ultrapasse 500'));
 
 console.log('4) diferenciação por tema (bíblica vs clássica)');
 check('bíblica pede nomes de personagens/episódio', biblica.includes('personagens/episódio bíblico'));
@@ -85,7 +85,14 @@ console.log('9) trimTagsToCharBudget nunca esvazia a lista, mesmo com 1 tag giga
     const oneHugeTag = ['x'.repeat(600)];
     const result = trimTagsToCharBudget(oneHugeTag, 500);
     check('mantém a única tag mesmo excedendo o limite sozinha', result.length === 1);
-    check('não trunca o TEXTO da tag (só corta tags inteiras, nunca no meio de uma)', result[0].length === 600);
+    check('trunca o texto da tag para caber no orçamento (garantia nunca-excede vale sempre)', result[0].length === 500);
+    check('resultado fica dentro do orçamento mesmo neste caso extremo', result.join(', ').length <= 500);
+}
+
+console.log('10) trimTagsToCharBudget com lista vazia não quebra');
+{
+    const result = trimTagsToCharBudget([], 500);
+    check('lista vazia retorna lista vazia', result.length === 0);
 }
 
 console.log(failures === 0 ? '\nTODOS OS TESTES PASSARAM' : `\n${failures} FALHA(S)`);

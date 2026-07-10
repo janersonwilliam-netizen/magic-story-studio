@@ -10,6 +10,13 @@
  * Isso NÃO é um teste de CI — a saída do LLM não é determinística. É uma
  * checagem pontual, com avisos (⚠️) para revisão humana, não um gate rígido.
  */
+// NOTA: este patch roda DEPOIS do import abaixo ser resolvido (imports do ES
+// module hoisteiam para o topo do arquivo em tempo de execução) — mas funciona
+// porque `callVertexText` (dentro de gemini.ts) resolve `fetch` dinamicamente
+// no MOMENTO da chamada, não guarda uma referência no import. Se um refactor
+// futuro capturar `const f = fetch` no escopo do módulo em gemini.ts, este
+// patch pararia de funcionar silenciosamente — vale checar aqui primeiro se
+// este script parar de redirecionar para localhost:8788.
 (globalThis as any).fetch = ((orig) => (input: any, init?: any) => {
     let url = String(input);
     if (url.startsWith('/')) url = 'http://localhost:8788' + url;
