@@ -90,6 +90,111 @@ function wavToBase64(wavBytes: Uint8Array): string {
 }
 
 /**
+ * Gera áudio via Vertex AI em STREAMING (SSE → NDJSON para o cliente).
+ *
+ * Por que streaming: o proxy do Cloudflare corta requisições que não RESPONDEM
+ * em ~100s (erro 524). Gerar a história INTEIRA numa única chamada (necessário
+ * para a voz não mudar — cada geração separada sai com timbre/tom diferente)
+ * leva bem mais que 100s. Com streaming, os headers saem imediatamente e o
+ * áudio flui conforme é gerado — o limite de 100s deixa de existir.
+ *
+ * Protocolo para o cliente: NDJSON, uma linha JSON por evento:
+ *   {"a": "<base64 de PCM16>"}  → pedaço de áudio
+ *   {"error": "mensagem"}       → falha no meio do fluxo
+ *   {"done": true}              → fim do áudio
+ */
+async function streamViaVertexAI(
+  payload: object,
+  env: Env,
+  models: readonly string[]
+): Promise<Response | null> {
+  const token = await getVertexToken(env as any);
+  const projectId = env.GCP_PROJECT_ID;
+  const region = env.GCP_REGION_TTS || 'us-central1';
+
+  for (const model of models) {
+    const host = region === 'global' ? 'aiplatform.googleapis.com' : `${region}-aiplatform.googleapis.com`;
+    const url = `https://${host}/v1beta1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:streamGenerateContent?alt=sse`;
+    console.log(`[generate-narration] Vertex AI STREAM — tentando modelo: ${model}`);
+
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'x-goog-user-project': projectId,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      const errText = await upstream.text().catch(() => '');
+      console.warn(`[generate-narration] STREAM ${model} falhou (${upstream.status}):`, errText.slice(0, 300));
+      continue; // tenta o próximo modelo — ainda não enviamos nada ao cliente
+    }
+
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+    const upstreamBody = upstream.body;
+
+    // Bombeia o SSE do Vertex → NDJSON para o cliente, sem esperar terminar.
+    (async () => {
+      const reader = upstreamBody.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let sentChunks = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIdx;
+          while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, newlineIdx).trim();
+            buffer = buffer.slice(newlineIdx + 1);
+            if (!line.startsWith('data:')) continue;
+            const jsonStr = line.slice(5).trim();
+            if (!jsonStr || jsonStr === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(jsonStr) as any;
+              const parts = evt.candidates?.[0]?.content?.parts || [];
+              for (const part of parts) {
+                if (part.inlineData?.data) {
+                  sentChunks++;
+                  await writer.write(encoder.encode(JSON.stringify({ a: part.inlineData.data }) + '\n'));
+                }
+              }
+            } catch { /* linha SSE parcial/não-JSON — ignora */ }
+          }
+        }
+        if (sentChunks === 0) {
+          await writer.write(encoder.encode(JSON.stringify({ error: 'Modelo não retornou áudio no stream' }) + '\n'));
+        } else {
+          console.log(`[generate-narration] STREAM ${model} — concluído com ${sentChunks} pedaços de áudio`);
+          await writer.write(encoder.encode(JSON.stringify({ done: true }) + '\n'));
+        }
+      } catch (e: any) {
+        try {
+          await writer.write(encoder.encode(JSON.stringify({ error: `Stream interrompido: ${e?.message || e}` }) + '\n'));
+        } catch { /* cliente já desconectou */ }
+      } finally {
+        try { await writer.close(); } catch { /* já fechado */ }
+      }
+    })();
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  return null;
+}
+
+/**
  * Gera áudio via Vertex AI (Service Account JSON ou Authorized User — usa créditos GCP)
  */
 async function generateViaVertexAI(
@@ -134,7 +239,7 @@ async function generateViaVertexAI(
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { text, voice, styleInstruction, temperature, model } = (await request.json()) as any;
+    const { text, voice, styleInstruction, temperature, model, stream } = (await request.json()) as any;
 
     if (!text) {
       return Response.json({ error: 'O campo "text" é obrigatório' }, { status: 400 });
@@ -172,7 +277,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     const models = model === 'pro' ? PRO_FIRST : FLASH_FIRST;
-    console.log(`[generate-narration] Usando Vertex AI, preferência: ${model === 'pro' ? 'pro' : 'flash'}`);
+    console.log(`[generate-narration] Usando Vertex AI, preferência: ${model === 'pro' ? 'pro' : 'flash'}${stream ? ' (streaming)' : ''}`);
+
+    // Streaming: headers saem já, o áudio flui conforme gerado — o corte de ~100s
+    // do proxy do Cloudflare (524) deixa de se aplicar, permitindo gerar a
+    // história INTEIRA numa única chamada (uma geração = uma voz).
+    if (stream === true) {
+      const streamResponse = await streamViaVertexAI(payload, env, models);
+      if (streamResponse) return streamResponse;
+      return Response.json({ error: 'Todos os modelos TTS falharam no Vertex AI (streaming). Verifique cotas e permissões no GCP.' }, { status: 500 });
+    }
+
     const audioBase64 = await generateViaVertexAI(payload, env, models);
 
     if (!audioBase64) {

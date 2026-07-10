@@ -83,22 +83,27 @@ export type GoogleVoiceOption = keyof typeof GOOGLE_VOICES;
 
 import { generateGoogleCloudAudio } from './google_tts';
 import { normalizePitchAcrossChunks } from './ttsPitch';
-import { trimTrailingSilence, pcmDurationSeconds, minPlausibleSpeechSeconds } from './ttsAudioUtils';
+import { trimTrailingSilence, pcmDurationSeconds, minPlausibleSpeechSeconds, minPlausibleSinglePassSeconds } from './ttsAudioUtils';
 let googleBillingUnavailable = false;
 
 /**
- * Max characters sent to Gemini TTS in a SINGLE generation.
- *
- * IMPORTANTE (2026-07-08): desceu de 4000 → 1500 por causa do limite de 100s do
- * proxy do Cloudflare em produção (erro 524). Medições no Vertex:
- *   - 2000 chars ≈ 140s de áudio ≈ 71s de geração (flash) / 96s (pro) → estoura
- *     ou tangencia os 100s;
- *   - 1500 chars ≈ ~105s de áudio ≈ ~50s (flash) / ~70s (pro) → folga segura.
- * Blocos maiores também disparavam a DEGRADAÇÃO SILENCIOSA do modelo (fala parte
- * do texto e preenche o resto com áudio mudo). O custo de mais emendas é
- * mitigado pelo crossfade + nivelador de volume (`levelLoudnessSlow`).
+ * Limite para gerar a história inteira numa ÚNICA chamada (uma geração = UMA
+ * voz — cada geração separada sai com timbre/tom diferente e o ouvinte percebe
+ * "a voz mudou"). Com o STREAMING no /api/generate-narration o corte de ~100s
+ * do Cloudflare (524) não se aplica mais, então o tamanho aqui é limitado só
+ * pela degradação do próprio modelo em textos muito longos (fala parte e
+ * emudece) — detectada por minPlausibleSinglePassSeconds + retry + fallback
+ * em blocos. 5200 chars cobre histórias de ~6–7 min.
  */
-const MAX_TTS_CHUNK_CHARS = 1500;
+const SINGLE_PASS_MAX_CHARS = 5200;
+
+/**
+ * Tamanho de bloco do FALLBACK em blocos (só para textos acima de
+ * SINGLE_PASS_MAX_CHARS ou quando a passada única degrada). Com streaming não
+ * há mais teto de 100s por requisição; 4000 gera o MENOR número de emendas
+ * mantendo cada bloco abaixo da zona de degradação silenciosa do modelo.
+ */
+const MAX_TTS_CHUNK_CHARS = 4000;
 
 /**
  * Volume médio (RMS) alvo, em escala linear (0..1). ~0,12 ≈ -18 dBFS.
@@ -124,13 +129,12 @@ export async function generateAudioNarration(params: GenerateAudioParams): Promi
     const isGemini = Object.keys(GEMINI_VOICES).includes(voiceName);
 
     if (isGemini || googleBillingUnavailable) {
-        // Portão de tamanho: acima do limite de chunk o Gemini TTS NÃO retorna erro —
-        // ele fala só parte do texto e preenche o resto com áudio quase mudo até o
-        // limite de tokens (~10 min de "silêncio"). Fragmenta PROATIVAMENTE em vez
-        // de esperar um erro de tamanho que nunca vem.
-        const chunkLimit = params.maxChunkChars ?? MAX_TTS_CHUNK_CHARS;
-        if (sanitizeTtsTranscript(text).length > chunkLimit) {
-            console.log(`[TTS] Texto (${text.length} chars) acima do limite de ${chunkLimit} — gerando em blocos.`);
+        // Passada ÚNICA sempre que possível (uma geração = uma voz). Só vai direto
+        // para blocos em textos além do que o modelo aguenta numa geração; a
+        // degradação silenciosa dentro do limite é detectada e cai em blocos.
+        const singleLimit = params.maxChunkChars ?? SINGLE_PASS_MAX_CHARS;
+        if (sanitizeTtsTranscript(text).length > singleLimit) {
+            console.log(`[TTS] Texto (${text.length} chars) acima do limite de passada única (${singleLimit}) — gerando em blocos.`);
             return generateLongAudioNarration(params);
         }
         try {
@@ -230,10 +234,13 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
             // Pro por padrão: era o que rodava antes (voz mais consistente e de
             // caráter que o usuário já conhecia). O Flash, testado como padrão,
             // renderiza a MESMA voz num tom bem diferente (ex.: Kore ~189 Hz no
-            // Flash vs ~240 Hz no Pro) — soa como "trocou a voz". Medido: Pro em
-            // bloco de 1500 chars leva ~65s, dentro dos ~100s do proxy do
-            // Cloudflare, então não reintroduz o erro 524.
+            // Flash vs ~240 Hz no Pro) — soa como "trocou a voz".
             model: params.ttsModel ?? 'pro',
+            // STREAMING: o servidor envia o áudio conforme gera (NDJSON). Com os
+            // headers saindo na hora, o corte de ~100s do proxy do Cloudflare (524)
+            // não se aplica — o que permite gerar a história INTEIRA numa única
+            // chamada: uma geração = UMA voz, sem emendas onde o timbre mudava.
+            stream: true,
             // Temperatura BAIXA para leitura fiel ao roteiro. O Gemini TTS é
             // generativo: quanto mais alta a temperatura, mais ele AMOSTRA e
             // ocasionalmente troca/pula/repete palavras (o "às vezes sai diferente
@@ -244,6 +251,53 @@ async function generateGeminiAudio(params: GenerateAudioParams): Promise<string>
         })
     });
 
+    const contentType = response.headers.get('content-type') || '';
+
+    // Caminho novo: stream NDJSON — {"a": base64-PCM}... {"done": true}
+    if (response.ok && contentType.includes('ndjson') && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const pcmParts: Uint8Array[] = [];
+        let buffer = '';
+        let sawDone = false;
+        let streamError = '';
+
+        const consumeLine = (line: string) => {
+            if (!line) return;
+            try {
+                const evt = JSON.parse(line);
+                if (evt.a) pcmParts.push(base64ToUint8Array(evt.a));
+                if (evt.done) sawDone = true;
+                if (evt.error) streamError = evt.error;
+            } catch { /* linha parcial — ignora */ }
+        };
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (value) buffer += decoder.decode(value, { stream: true });
+            let newlineIdx;
+            while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+                consumeLine(buffer.slice(0, newlineIdx).trim());
+                buffer = buffer.slice(newlineIdx + 1);
+            }
+            if (done) break;
+        }
+        consumeLine(buffer.trim());
+
+        if (streamError) throw new Error(streamError);
+        const totalBytes = pcmParts.reduce((sum, part) => sum + part.length, 0);
+        if (!sawDone || totalBytes === 0) {
+            throw new Error('Stream de áudio incompleto do servidor TTS. Tente novamente.');
+        }
+
+        const pcm = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const part of pcmParts) { pcm.set(part, offset); offset += part.length; }
+        const wavBase64 = uint8ArrayToBase64(createWavFromPcm16(pcm, 24000, 1));
+        return `data:audio/wav;base64,${wavBase64}`;
+    }
+
+    // Caminho legado (JSON completo) — também cobre respostas de erro.
     let data: any;
     try {
         data = await response.json();
@@ -284,14 +338,33 @@ async function generateSingleGeminiAudioNarration(params: GenerateAudioParams): 
     if (!base64) return dataUrl;
 
     const wavBytes = base64ToUint8Array(base64);
-    const pcmFull = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
+    let pcmFull = wavBytes.length > 44 ? wavBytes.subarray(44) : wavBytes;
 
-    // O Gemini TTS, ao degradar, para de falar e preenche o resto com áudio quase
-    // mudo. Corta essa cauda; se a fala restante for implausivelmente curta para o
-    // texto, trata como truncamento (o chamador cai na geração em blocos).
-    const pcmRaw = trimTrailingSilence(pcmFull);
-    const speechSeconds = pcmDurationSeconds(pcmRaw);
-    if (speechSeconds < minPlausibleSpeechSeconds(params.text)) {
+    // O Gemini TTS, ao degradar em texto longo, fala só PARTE do roteiro e emudece
+    // (às vezes já tendo lido metade — por isso o limiar RÍGIDO de passada única,
+    // não o frouxo por bloco). Corta a cauda muda; se a fala for curta demais para
+    // o texto, regenera 1x (dá nova chance à voz única) antes de desistir e cair
+    // na geração em blocos.
+    let pcmRaw = trimTrailingSilence(pcmFull);
+    let speechSeconds = pcmDurationSeconds(pcmRaw);
+    const minSpeech = minPlausibleSinglePassSeconds(params.text);
+    if (speechSeconds < minSpeech) {
+        console.warn(
+            `[Gemini TTS] Passada única truncada (${Math.round(speechSeconds)}s de fala; mínimo plausível ${Math.round(minSpeech)}s ` +
+            `para ${countWords(params.text)} palavras) — regenerando 1x`
+        );
+        const retryUrl = await generateGeminiAudio({ ...params });
+        const retryBase64 = retryUrl.split(',')[1] || '';
+        const retryWav = base64ToUint8Array(retryBase64);
+        const retryFull = retryWav.length > 44 ? retryWav.subarray(44) : retryWav;
+        const retryTrimmed = trimTrailingSilence(retryFull);
+        if (retryTrimmed.byteLength > pcmRaw.byteLength) {
+            pcmFull = retryFull;
+            pcmRaw = retryTrimmed;
+            speechSeconds = pcmDurationSeconds(pcmRaw);
+        }
+    }
+    if (speechSeconds < minSpeech) {
         throw new Error(
             `TTS truncado pelo provedor: apenas ${Math.round(speechSeconds)}s de fala para ${countWords(params.text)} palavras`
         );

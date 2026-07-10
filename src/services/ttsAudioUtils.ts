@@ -56,3 +56,16 @@ export function minPlausibleSpeechSeconds(text: string): number {
     const words = (text || '').trim().split(/\s+/).filter(Boolean).length;
     return (words / 220) * 60 * 0.5;
 }
+
+/**
+ * Versão RÍGIDA para a passada única da história inteira. A degradação típica
+ * do Gemini em texto longo fala ~metade/⅔ do roteiro e emudece — o limiar
+ * frouxo acima não pega (ex.: incidente real com 690 palavras: falou 164s e o
+ * limiar era 94s). Aqui: 185 wpm é o teto de leitura do nosso prompt de ritmo;
+ * exigimos 75% disso. 690 palavras → mínimo ~168s (o incidente dispararia).
+ * Leituras legítimas (~135–185 wpm → 224s+ nesse exemplo) passam com folga.
+ */
+export function minPlausibleSinglePassSeconds(text: string): number {
+    const words = (text || '').trim().split(/\s+/).filter(Boolean).length;
+    return (words / 185) * 60 * 0.75;
+}
